@@ -13,12 +13,6 @@ stdio JSON-RPC to a **WebSocket** — no auth yet (that comes later via Tailscal
 ACP client  ──wss──►  stdio-to-ws  ──stdio──►  hermes-acp  ──►  OpenRouter
 ```
 
-## Live endpoint
-
-```
-wss://pacific-flow-production-d3fc.up.railway.app
-```
-
 Model: `anthropic/claude-sonnet-4-6` (via OpenRouter).
 
 ## Recommended client: Thunderbolt
