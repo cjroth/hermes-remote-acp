@@ -1,7 +1,16 @@
 FROM docker.io/nousresearch/hermes-agent:latest
 
-# Install the stdio-to-ws ACP WebSocket bridge
-RUN npm install -g stdio-to-ws
+# Install the stdio-to-ws ACP WebSocket bridge.
+# Patch it to honor a WS_HOST env var so we can bind the WebSocket server to
+# loopback only (the CLI exposes no --host). With WS_HOST unset it binds all
+# interfaces as before; bridge.sh sets WS_HOST=127.0.0.1 for the tailnet-only
+# lockdown. The patch is idempotent-checked so the build fails loudly if a
+# future stdio-to-ws version changes this line.
+RUN npm install -g stdio-to-ws \
+    && f="$(npm root -g)/stdio-to-ws/dist/stdio-to-ws.js" \
+    && grep -q 'new WebSocketServer({' "$f" \
+    && sed -i 's#new WebSocketServer({#new WebSocketServer({ host: process.env.WS_HOST || undefined,#' "$f" \
+    && grep -q "process.env.WS_HOST" "$f"
 
 # --- Tailscale (userspace networking — no TUN/NET_ADMIN needed) ---------------
 # Pinned for reproducible builds. Arch is detected so the image builds on both
