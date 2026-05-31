@@ -1,0 +1,14 @@
+#!/command/with-contenv sh
+# tailscaled in userspace-networking mode — no TUN device or NET_ADMIN needed,
+# which is exactly what a Railway/PaaS container allows.
+#   --statedir → on-disk state ("var root"). Required for `tailscale serve
+#                --https` TLS certs (mem: state gives "no TailscaleVarRoot").
+#                The node is still EPHEMERAL because the AUTH KEY is ephemeral;
+#                state lives on the container's ephemeral disk (no volume), so
+#                each deploy is a fresh node that re-auths and re-fetches a cert.
+# /run is often a runtime tmpfs, so (re)create the socket dir before launching.
+mkdir -p /var/run/tailscale /var/lib/tailscale
+exec /usr/local/bin/tailscaled \
+    --tun=userspace-networking \
+    --statedir=/var/lib/tailscale \
+    --socket=/var/run/tailscale/tailscaled.sock

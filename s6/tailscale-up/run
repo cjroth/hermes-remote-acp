@@ -1,0 +1,69 @@
+#!/command/with-contenv sh
+# Joins this container to the tailnet and exposes the local WebSocket bridge to
+# the tailnet ONLY (via `tailscale serve` — never `funnel`, which would be
+# public). Modeled as a *longrun* (not a oneshot) on purpose: s6-overlay
+# considers a longrun "up" the instant it spawns, so this never gates or blocks
+# the bridge CMD. Every step is non-fatal — if the tailnet join or serve fails,
+# we log and keep the process alive so s6 doesn't restart-loop us.
+#
+# Requires (as Railway env vars):
+#   TS_AUTHKEY   — ephemeral, reusable Tailscale auth key (secret)
+#   TS_HOSTNAME  — tailnet node name           (default: hermes-acp)
+#   PORT         — local port the bridge listens on (default: 3000)
+
+SOCK=/var/run/tailscale/tailscaled.sock
+PORT="${PORT:-3000}"
+HOSTNAME="${TS_HOSTNAME:-hermes-acp}"
+TS="/usr/local/bin/tailscale --socket=$SOCK"
+
+if [ -z "${TS_AUTHKEY:-}" ]; then
+    echo "[tailscale-up] TS_AUTHKEY not set — bridge runs but is NOT on the tailnet." >&2
+    exec sleep infinity
+fi
+
+# Wait for tailscaled's control socket (max ~30s).
+i=0
+while [ ! -S "$SOCK" ]; do
+    i=$((i + 1))
+    if [ "$i" -gt 30 ]; then
+        echo "[tailscale-up] tailscaled socket never appeared after 30s" >&2
+        exec sleep infinity
+    fi
+    sleep 1
+done
+
+echo "[tailscale-up] Joining tailnet as '${HOSTNAME}'..." >&2
+if ! $TS up --authkey="$TS_AUTHKEY" --hostname="$HOSTNAME" --accept-routes=false; then
+    echo "[tailscale-up] 'tailscale up' failed — see above. Bridge still runs locally." >&2
+    exec sleep infinity
+fi
+
+# Expose the bridge to the tailnet. Prefer HTTPS (wss://, needed by iOS clients
+# like Thunderbolt), but ONLY if a TLS cert can actually be provisioned —
+# `serve --https` registers config and returns 0 even when the cert can't be
+# obtained, so we must verify the cert FIRST and fall back to ws:// otherwise.
+# (`tailscale cert` also pre-warms, so the first client connection is instant.)
+# Derive this node's own FQDN (Self.DNSName, first in the status JSON). Retry —
+# the name isn't populated the instant `tailscale up` returns.
+FQDN=""
+j=0
+while [ -z "$FQDN" ] && [ "$j" -lt 15 ]; do
+    FQDN=$($TS status --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | sed 's/.*"DNSName":"//; s/"//; s/\.$//')
+    [ -z "$FQDN" ] && { j=$((j + 1)); sleep 1; }
+done
+
+echo "[tailscale-up] Checking TLS cert availability for ${FQDN:-<unknown>}..." >&2
+if [ -n "$FQDN" ] && $TS cert "$FQDN" >/dev/null 2>/tmp/cert.err; then
+    $TS serve --bg --https=443 "http://127.0.0.1:${PORT}" >/dev/null 2>&1
+    echo "[tailscale-up] Serving on tailnet (TLS): wss://${FQDN}/" >&2
+else
+    echo "[tailscale-up] TLS cert unavailable ($(tr '\n' ' ' </tmp/cert.err 2>/dev/null)); using plain ws://." >&2
+    $TS serve --bg --http=80 "http://127.0.0.1:${PORT}" >/dev/null 2>&1
+    echo "[tailscale-up] Serving on tailnet: ws://${FQDN:-${HOSTNAME}.<tailnet>.ts.net}/" >&2
+    echo "[tailscale-up] (Tailnet traffic is WireGuard-encrypted. Resolve the cert" >&2
+    echo "[tailscale-up]  error above + restart to upgrade to wss:// for iOS clients.)" >&2
+fi
+
+$TS serve status >&2 || true
+
+exec sleep infinity
