@@ -43,25 +43,42 @@ fi
 # `serve --https` registers config and returns 0 even when the cert can't be
 # obtained, so we must verify the cert FIRST and fall back to ws:// otherwise.
 # (`tailscale cert` also pre-warms, so the first client connection is instant.)
-# Derive this node's own FQDN (Self.DNSName, first in the status JSON). Retry —
-# the name isn't populated the instant `tailscale up` returns.
+# Derive this node's own FQDN. Self is serialized first in the status JSON, so
+# the first "<label>.<tailnet>.ts.net" match is Self's name (the bare MagicDNS
+# suffix "<tailnet>.ts.net" has one fewer label and won't match). Retry
+# generously — on a cold boot MagicDNS isn't configured the instant
+# `tailscale up` returns, and an empty FQDN here would wrongly drop us to ws://.
 FQDN=""
 j=0
-while [ -z "$FQDN" ] && [ "$j" -lt 15 ]; do
-    FQDN=$($TS status --json 2>/dev/null | grep -o '"DNSName":"[^"]*"' | head -1 | sed 's/.*"DNSName":"//; s/"//; s/\.$//')
+while [ -z "$FQDN" ] && [ "$j" -lt 60 ]; do
+    FQDN=$($TS status --json 2>/dev/null | grep -oE '[A-Za-z0-9-]+\.[A-Za-z0-9-]+\.ts\.net' | head -1)
     [ -z "$FQDN" ] && { j=$((j + 1)); sleep 1; }
 done
 
-echo "[tailscale-up] Checking TLS cert availability for ${FQDN:-<unknown>}..." >&2
-if [ -n "$FQDN" ] && $TS cert "$FQDN" >/dev/null 2>/tmp/cert.err; then
+# Provision the cert (cached in the persistent statedir after the first time, so
+# this is instant on later boots). Retry — Tailscale's cert DNS-01 backend can
+# return transient 500s. iOS clients (Thunderbolt) REQUIRE wss://, so we lean on
+# getting HTTPS and only fall back to ws:// as a last resort.
+echo "[tailscale-up] Provisioning TLS cert for ${FQDN:-<unknown>}..." >&2
+cert_ok=""
+if [ -n "$FQDN" ]; then
+    c=0
+    while [ "$c" -lt 5 ]; do
+        if $TS cert "$FQDN" >/dev/null 2>/tmp/cert.err; then cert_ok=1; break; fi
+        c=$((c + 1)); sleep 5
+    done
+fi
+
+if [ -n "$cert_ok" ]; then
+    $TS serve --https=80 off >/dev/null 2>&1 || true
+    $TS serve --http=80 off  >/dev/null 2>&1 || true
     $TS serve --bg --https=443 "http://127.0.0.1:${PORT}" >/dev/null 2>&1
     echo "[tailscale-up] Serving on tailnet (TLS): wss://${FQDN}/" >&2
 else
     echo "[tailscale-up] TLS cert unavailable ($(tr '\n' ' ' </tmp/cert.err 2>/dev/null)); using plain ws://." >&2
     $TS serve --bg --http=80 "http://127.0.0.1:${PORT}" >/dev/null 2>&1
     echo "[tailscale-up] Serving on tailnet: ws://${FQDN:-${HOSTNAME}.<tailnet>.ts.net}/" >&2
-    echo "[tailscale-up] (Tailnet traffic is WireGuard-encrypted. Resolve the cert" >&2
-    echo "[tailscale-up]  error above + restart to upgrade to wss:// for iOS clients.)" >&2
+    echo "[tailscale-up] (iOS clients need wss://. Restart to re-attempt the cert.)" >&2
 fi
 
 $TS serve status >&2 || true
