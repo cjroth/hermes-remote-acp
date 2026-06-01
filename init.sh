@@ -12,6 +12,14 @@ TS="/usr/local/bin/tailscale --socket=$SOCK"
 
 mkdir -p /var/run/tailscale /var/lib/tailscale /dev/net /run/tls
 
+# /opt/data (HERMES_HOME) is a persistent volume — Hermes keeps sessions, memory,
+# state.db and learned skills here across restarts. Fly mounts it root-owned, so
+# hand it to the hermes user, then (re)seed config.yaml from the image (repo is
+# the source of truth for the model/provider; runtime data persists alongside).
+chown hermes:hermes /opt/data 2>/dev/null || true
+install -o hermes -g hermes -m 644 /opt/seed/config.yaml /opt/data/config.yaml 2>/dev/null || \
+    cp /opt/seed/config.yaml /opt/data/config.yaml
+
 # --- tailscaled: requires a real kernel TUN device ---------------------------
 # We deliberately do NOT fall back to userspace networking: its software net
 # stack stalls TLS handshakes (5-30s connects that wedge after a couple). So we

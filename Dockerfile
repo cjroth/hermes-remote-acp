@@ -23,8 +23,10 @@ RUN set -eux; \
     mv "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}/tailscaled" /usr/local/bin/tailscaled; \
     rm -rf /tmp/ts.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}"
 
-# Hermes config (OpenRouter provider + model). /opt/data is HERMES_HOME.
-COPY --chown=hermes:hermes hermes_config.yaml /opt/data/config.yaml
+# Hermes config (OpenRouter provider + model). Staged outside /opt/data because
+# that path is a persistent volume at runtime (which would shadow a baked file);
+# init.sh seeds it into /opt/data on boot.
+COPY hermes_config.yaml /opt/seed/config.yaml
 
 # Single entrypoint — orchestrates tailscaled + serve + bridge WITHOUT s6
 # (s6-overlay needs PID 1, which Fly.io's init doesn't provide). The bridge is
