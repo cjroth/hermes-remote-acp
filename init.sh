@@ -12,15 +12,19 @@ TS="/usr/local/bin/tailscale --socket=$SOCK"
 
 mkdir -p /var/run/tailscale /var/lib/tailscale /dev/net /run/tls
 
-# --- tailscaled: real kernel TUN if available (Fly), else userspace -----------
+# --- tailscaled: requires a real kernel TUN device ---------------------------
+# We deliberately do NOT fall back to userspace networking: its software net
+# stack stalls TLS handshakes (5-30s connects that wedge after a couple). So we
+# require kernel TUN and fail loudly if the host forbids it (e.g. Railway). Run
+# on a TUN-capable host (Fly.io VMs, a VPS, etc.).
 [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
-if [ -c /dev/net/tun ]; then
-    echo "[init] kernel TUN mode" >&2
-    /usr/local/bin/tailscaled --statedir=/var/lib/tailscale --socket="$SOCK" >/tmp/tailscaled.log 2>&1 &
-else
-    echo "[init] userspace networking mode" >&2
-    /usr/local/bin/tailscaled --tun=userspace-networking --statedir=/var/lib/tailscale --socket="$SOCK" >/tmp/tailscaled.log 2>&1 &
+if [ ! -c /dev/net/tun ]; then
+    echo "[init] FATAL: no /dev/net/tun. This needs a TUN-capable host (Fly.io VM, VPS, …)." >&2
+    echo "[init] Userspace-networking Tailscale stalls TLS handshakes; refusing to run in it." >&2
+    exit 1
 fi
+echo "[init] kernel TUN mode" >&2
+/usr/local/bin/tailscaled --statedir=/var/lib/tailscale --socket="$SOCK" >/tmp/tailscaled.log 2>&1 &
 
 # --- join tailnet + expose the bridge to the tailnet only --------------------
 # Done in the background so a transient failure never blocks the bridge.
