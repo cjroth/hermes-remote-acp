@@ -1,16 +1,12 @@
 FROM docker.io/nousresearch/hermes-agent:latest
 
-# Install the stdio-to-ws ACP WebSocket bridge.
-# Patch it to honor a WS_HOST env var so we can bind the WebSocket server to
-# loopback only (the CLI exposes no --host). With WS_HOST unset it binds all
-# interfaces as before; bridge.sh sets WS_HOST=127.0.0.1 for the tailnet-only
-# lockdown. The patch is idempotent-checked so the build fails loudly if a
-# future stdio-to-ws version changes this line.
-RUN npm install -g stdio-to-ws \
-    && f="$(npm root -g)/stdio-to-ws/dist/stdio-to-ws.js" \
-    && grep -q 'new WebSocketServer({' "$f" \
-    && sed -i 's#new WebSocketServer({#new WebSocketServer({ host: process.env.WS_HOST || undefined,#' "$f" \
-    && grep -q "process.env.WS_HOST" "$f"
+# Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
+# the Tailscale cert) because `tailscale serve --https` wedges in userspace
+# netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws`
+# package.
+RUN mkdir -p /opt/bridge
+COPY bridge.js /opt/bridge/bridge.js
+RUN cd /opt/bridge && npm install ws@8
 
 # --- Tailscale (userspace networking — no TUN/NET_ADMIN needed) ---------------
 # Pinned for reproducible builds. Arch is detected so the image builds on both
@@ -47,11 +43,8 @@ COPY --chown=hermes:hermes hermes_config.yaml /opt/data/config.yaml
 COPY bridge.sh /bridge.sh
 RUN chmod +x /bridge.sh
 
-# Railway injects PORT at runtime. The bridge binds this port; it is exposed to
-# the tailnet ONLY via `tailscale serve` (the Railway public domain is removed),
-# so there is no public ingress.
-ENV PORT=3000
-
+# The bridge listens on loopback 127.0.0.1:8443 (WSS) and is reachable ONLY via
+# `tailscale serve --tcp=443` over the tailnet — no public ingress.
 # main-wrapper.sh sees /bridge.sh as an executable and runs:
 #   exec s6-setuidgid hermes /bridge.sh
 CMD ["/bridge.sh"]
