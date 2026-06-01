@@ -1,0 +1,21 @@
+# Fly.io deployment — Tokyo (nrt), real kernel-TUN Tailscale.
+# No [[services]]/[http_service] block => no public ingress; the agent is
+# reachable ONLY over the tailnet (via `tailscale serve`).
+app = "hermes-acp-nrt"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TS_HOSTNAME = "hermes-tokyo"
+
+[[mounts]]
+  source = "ts_state"
+  destination = "/var/lib/tailscale"
+  initial_size = "1gb"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1
