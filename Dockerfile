@@ -2,15 +2,13 @@ FROM docker.io/nousresearch/hermes-agent:latest
 
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace
-# netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws`
-# package.
+# netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws` pkg.
 RUN mkdir -p /opt/bridge
 COPY bridge.js /opt/bridge/bridge.js
 RUN cd /opt/bridge && npm install ws@8
 
-# --- Tailscale (userspace networking — no TUN/NET_ADMIN needed) ---------------
-# Pinned for reproducible builds. Arch is detected so the image builds on both
-# amd64 (Railway builders) and arm64 (local).
+# --- Tailscale (kernel TUN where allowed, userspace fallback) -----------------
+# Pinned for reproducible builds. Arch detected so it builds on amd64 + arm64.
 ARG TAILSCALE_VERSION=1.98.4
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -23,28 +21,16 @@ RUN set -eux; \
     tar -xzf /tmp/ts.tgz -C /tmp; \
     mv "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}/tailscale"  /usr/local/bin/tailscale; \
     mv "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}/tailscaled" /usr/local/bin/tailscaled; \
-    rm -rf /tmp/ts.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}"; \
-    mkdir -p /var/run/tailscale
+    rm -rf /tmp/ts.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}"
 
-# Tailscale s6 services: tailscaled (longrun, root) + tailscale-up (oneshot that
-# joins the talnet and runs `tailscale serve`). Both are added to the `user`
-# bundle so s6-overlay supervises them alongside the bridge CMD.
-COPY s6/tailscaled/         /etc/s6-overlay/s6-rc.d/tailscaled/
-COPY s6/tailscale-up/       /etc/s6-overlay/s6-rc.d/tailscale-up/
-RUN chmod +x /etc/s6-overlay/s6-rc.d/tailscaled/run /etc/s6-overlay/s6-rc.d/tailscale-up/run; \
-    touch /etc/s6-overlay/s6-rc.d/user/contents.d/tailscaled \
-          /etc/s6-overlay/s6-rc.d/user/contents.d/tailscale-up
-
-# Seed hermes config with OpenRouter settings
-# /opt/data is HERMES_HOME, owned by hermes:hermes
+# Hermes config (OpenRouter provider + model). /opt/data is HERMES_HOME.
 COPY --chown=hermes:hermes hermes_config.yaml /opt/data/config.yaml
 
-# Bridge startup script — executed as hermes user via s6-setuidgid in main-wrapper.sh
-COPY bridge.sh /bridge.sh
-RUN chmod +x /bridge.sh
+# Single entrypoint — orchestrates tailscaled + serve + bridge WITHOUT s6
+# (s6-overlay needs PID 1, which Fly.io's init doesn't provide). The bridge is
+# reachable ONLY via `tailscale serve` over the tailnet; no public ingress.
+COPY init.sh /init.sh
+RUN chmod +x /init.sh
 
-# The bridge listens on loopback 127.0.0.1:8443 (WSS) and is reachable ONLY via
-# `tailscale serve --tcp=443` over the tailnet — no public ingress.
-# main-wrapper.sh sees /bridge.sh as an executable and runs:
-#   exec s6-setuidgid hermes /bridge.sh
-CMD ["/bridge.sh"]
+ENTRYPOINT ["/init.sh"]
+CMD []
