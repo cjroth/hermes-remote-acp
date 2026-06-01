@@ -10,15 +10,11 @@ primary_region = "nrt"
 [env]
   TS_HOSTNAME = "hermes-tokyo"
 
+# One volume (Fly allows only one per machine) holds both Tailscale state
+# (/data/tailscale) and Hermes home (/data/hermes) — see init.sh.
 [[mounts]]
-  source = "ts_state"
-  destination = "/var/lib/tailscale"
-  initial_size = "1gb"
-
-# Hermes home: sessions, memory, state.db, learned skills (persists agent state).
-[[mounts]]
-  source = "hermes_data"
-  destination = "/opt/data"
+  source = "data"
+  destination = "/data"
   initial_size = "1gb"
 
 [[vm]]

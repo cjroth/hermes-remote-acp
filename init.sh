@@ -10,15 +10,17 @@ HOSTNAME="${TS_HOSTNAME:-hermes}"
 PORT=8443
 TS="/usr/local/bin/tailscale --socket=$SOCK"
 
-mkdir -p /var/run/tailscale /var/lib/tailscale /dev/net /run/tls
+mkdir -p /var/run/tailscale /data/hermes /data/tailscale /dev/net /run/tls
 
-# /opt/data (HERMES_HOME) is a persistent volume — Hermes keeps sessions, memory,
-# state.db and learned skills here across restarts. Fly mounts it root-owned, so
-# hand it to the hermes user, then (re)seed config.yaml from the image (repo is
-# the source of truth for the model/provider; runtime data persists alongside).
-chown hermes:hermes /opt/data 2>/dev/null || true
-install -o hermes -g hermes -m 644 /opt/seed/config.yaml /opt/data/config.yaml 2>/dev/null || \
-    cp /opt/seed/config.yaml /opt/data/config.yaml
+# One persistent volume at /data holds everything that must survive restarts:
+#   /data/hermes    = HERMES_HOME (sessions, memory, state.db, learned skills)
+#   /data/tailscale = tailscaled state (node identity + TLS cert)
+# Fly mounts /data root-owned, so hand the hermes home to the hermes user, then
+# (re)seed config.yaml from the image (repo is the source of truth for the
+# model/provider; runtime data persists alongside it).
+chown hermes:hermes /data/hermes 2>/dev/null || true
+install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yaml 2>/dev/null || \
+    cp /opt/seed/config.yaml /data/hermes/config.yaml
 
 # --- tailscaled: requires a real kernel TUN device ---------------------------
 # We deliberately do NOT fall back to userspace networking: its software net
@@ -32,7 +34,7 @@ if [ ! -c /dev/net/tun ]; then
     exit 1
 fi
 echo "[init] kernel TUN mode" >&2
-/usr/local/bin/tailscaled --statedir=/var/lib/tailscale --socket="$SOCK" >/tmp/tailscaled.log 2>&1 &
+/usr/local/bin/tailscaled --statedir=/data/tailscale --socket="$SOCK" >/tmp/tailscaled.log 2>&1 &
 
 # --- join tailnet + expose the bridge to the tailnet only --------------------
 # Done in the background so a transient failure never blocks the bridge.
@@ -83,7 +85,7 @@ while { [ ! -s /run/tls/tls.crt ] || [ ! -s /run/tls/tls.key ]; } && [ "$i" -lt 
     i=$((i+1)); sleep 1
 done
 
-export HOME=/opt/data BRIDGE_PORT=$PORT WS_HOST=127.0.0.1
+export HOME=/data/hermes BRIDGE_PORT=$PORT WS_HOST=127.0.0.1
 if [ -s /run/tls/tls.crt ] && [ -s /run/tls/tls.key ]; then
     export TLS_CERT=/run/tls/tls.crt TLS_KEY=/run/tls/tls.key
     echo "[init] starting bridge (WSS) on 127.0.0.1:$PORT" >&2

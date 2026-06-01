@@ -23,9 +23,12 @@ RUN set -eux; \
     mv "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}/tailscaled" /usr/local/bin/tailscaled; \
     rm -rf /tmp/ts.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}"
 
-# Hermes config (OpenRouter provider + model). Staged outside /opt/data because
-# that path is a persistent volume at runtime (which would shadow a baked file);
-# init.sh seeds it into /opt/data on boot.
+# HERMES_HOME lives on the persistent volume (/data/hermes), overriding the base
+# image's /opt/data so the agent's sessions/memory/skills survive restarts.
+ENV HERMES_HOME=/data/hermes
+
+# Hermes config (OpenRouter provider + model). Staged outside the volume path so
+# the mount can't shadow it; init.sh seeds it into /data/hermes on boot.
 COPY hermes_config.yaml /opt/seed/config.yaml
 
 # Single entrypoint — orchestrates tailscaled + serve + bridge WITHOUT s6
