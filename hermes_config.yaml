@@ -1,3 +1,9 @@
 model:
   default: "anthropic/claude-sonnet-4-6"
   provider: openrouter
+  # Cap completion length per request. Hermes otherwise asks for the model's
+  # full output ceiling (64000 for Sonnet 4.6), and OpenRouter pre-authorizes
+  # that whole amount against your key's balance — which 402s once the balance
+  # can't cover 64k output tokens. 16000 is plenty for chat/agent turns and
+  # keeps the per-request reservation small.
+  max_tokens: 16000
