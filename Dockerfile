@@ -7,6 +7,13 @@ RUN mkdir -p /opt/bridge
 COPY bridge.js /opt/bridge/bridge.js
 RUN cd /opt/bridge && npm install ws@8
 
+# Notion's official `ntn` CLI — the bundled Hermes `notion` skill prefers it
+# over raw HTTP (shorter syntax, file uploads, Workers). Node ships in the base
+# image. NOTION_KEYRING=0 keeps it headless (no OS keychain); init.sh aliases
+# NOTION_API_TOKEN from NOTION_API_KEY at runtime.
+RUN npm install -g ntn
+ENV NOTION_KEYRING=0
+
 # --- Tailscale (kernel TUN where allowed, userspace fallback) -----------------
 # Pinned for reproducible builds. Arch detected so it builds on amd64 + arm64.
 ARG TAILSCALE_VERSION=1.98.4

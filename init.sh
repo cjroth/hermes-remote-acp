@@ -22,10 +22,17 @@ chown hermes:hermes /data/hermes 2>/dev/null || true
 install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yaml 2>/dev/null || \
     cp /opt/seed/config.yaml /data/hermes/config.yaml
 
+# Notion: the `ntn` CLI and the bundled `notion` skill read NOTION_API_TOKEN;
+# alias it from the NOTION_API_KEY secret so the agent uses the CLI path. Both
+# the gateway and the bridge (→ hermes-acp) inherit this exported env.
+if [ -n "${NOTION_API_KEY:-}" ]; then
+    export NOTION_API_TOKEN="$NOTION_API_KEY"
+fi
+
 # --- tailscaled: requires a real kernel TUN device ---------------------------
 # We deliberately do NOT fall back to userspace networking: its software net
 # stack stalls TLS handshakes (5-30s connects that wedge after a couple). So we
-# require kernel TUN and fail loudly if the host forbids it (e.g. Railway). Run
+# require kernel TUN and fail loudly if the host forbids it (many PaaS do). Run
 # on a TUN-capable host (Fly.io VMs, a VPS, etc.).
 [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200 2>/dev/null || true
 if [ ! -c /dev/net/tun ]; then
