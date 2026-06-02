@@ -77,6 +77,20 @@ echo "[init] kernel TUN mode" >&2
   fi
 ) &
 
+# --- Telegram gateway (optional, runs as hermes user, background) ------------
+# Outbound-only (long-polls Telegram's API), so it's unaffected by the
+# tailnet-only lockdown. Setting TELEGRAM_BOT_TOKEN auto-enables the platform
+# (gateway _apply_env_overrides), so no interactive `gateway setup` is needed.
+# State (telegram offset, sessions) lives in HERMES_HOME=/data/hermes (volume).
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
+    echo "[init] starting Telegram gateway (hermes user)..." >&2
+    HOME=/data/hermes HERMES_HOME=/data/hermes \
+      /command/s6-setuidgid hermes /opt/hermes/.venv/bin/hermes gateway run \
+      >>/data/hermes/gateway.log 2>&1 &
+else
+    echo "[init] TELEGRAM_BOT_TOKEN unset — Telegram gateway not started" >&2
+fi
+
 # --- bridge (runs as the hermes user, foreground = keeps container alive) -----
 # Wait for the cert so the bridge can serve WSS; fall back to plain ws if absent.
 echo "[init] waiting for TLS cert..." >&2
