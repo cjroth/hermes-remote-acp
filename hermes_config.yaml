@@ -1,10 +1,11 @@
 model:
-  # Kimi K2.6 (Moonshot) — open-weights agentic model, native tool calling +
-  # parallel tool calls. ~4x cheaper than Claude Sonnet 4.6.
-  default: "moonshotai/kimi-k2.6"
+  # DeepSeek V4 Flash — open-weights, speed-optimized ("flash") variant, native
+  # tool calling, 1M context. Faster than Kimi K2.6 (no reasoning trace) and
+  # ~30x cheaper input / ~75x cheaper output than Claude Sonnet 4.6.
+  default: "deepseek/deepseek-v4-flash"
   provider: openrouter
-  # Cap completion length per request. Kimi K2.6 reports a 262k max output, and
-  # OpenRouter pre-authorizes the full max_tokens against your credit balance —
-  # so without this cap each request reserves ~$0.90 and 402s. 16000 is plenty
-  # for chat/agent turns and keeps the reservation to ~$0.05.
+  # Cap completion length per request — OpenRouter pre-authorizes the full
+  # max_tokens against your credit balance, so an uncapped request reserves the
+  # model's max output and can 402. 16000 is plenty for chat/agent turns; at
+  # $0.20/M output that reserves only ~$0.003.
   max_tokens: 16000
