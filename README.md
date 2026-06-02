@@ -24,7 +24,7 @@ This needs a host that gives the container a real **kernel TUN device**
 (`/dev/net/tun` + `NET_ADMIN`) — e.g. a **[Fly.io](https://fly.io) VM** (see
 `fly.toml`) or a VPS. It deliberately refuses to start otherwise.
 
-Why: on hosts that forbid TUN (most PaaS, e.g. Railway), Tailscale falls back to
+Why: on hosts that forbid TUN (many PaaS platforms), Tailscale falls back to
 **userspace networking**, whose software net stack *stalls the TLS handshake* —
 connections take 5–30s and wedge after a couple. Kernel TUN handles inbound in
 the kernel, so connections are ~1s and stable. The bridge also terminates TLS
