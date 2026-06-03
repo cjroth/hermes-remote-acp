@@ -9,3 +9,13 @@ model:
   # model's max output and can 402. 16000 is plenty for chat/agent turns; at
   # $0.20/M output that reserves only ~$0.003.
   max_tokens: 16000
+
+# Telegram response streaming — the bot progressively edits its message as
+# tokens arrive instead of waiting for the full reply. "edit" transport
+# (progressive editMessageText) is the most compatible mode; Telegram's edit
+# rate limits are handled by edit_interval/buffer_threshold defaults. Applied at
+# gateway startup (NOT via an in-process restart, which is what crashed it
+# before).
+streaming:
+  enabled: true
+  transport: edit

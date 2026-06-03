@@ -90,10 +90,21 @@ echo "[init] kernel TUN mode" >&2
 # (gateway _apply_env_overrides), so no interactive `gateway setup` is needed.
 # State (telegram offset, sessions) lives in HERMES_HOME=/data/hermes (volume).
 if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-    echo "[init] starting Telegram gateway (hermes user)..." >&2
-    HOME=/data/hermes HERMES_HOME=/data/hermes \
-      /command/s6-setuidgid hermes /opt/hermes/.venv/bin/hermes gateway run \
-      >>/data/hermes/gateway.log 2>&1 &
+    echo "[init] starting Telegram gateway (hermes user, supervised)..." >&2
+    # Supervised respawn loop: the gateway is a plain background process (no s6 /
+    # systemd here), so if it ever exits — crash, OOM, or the agent stopping it —
+    # nothing would restart it and it'd stay dead until the next machine reboot.
+    # This loop respawns it (5s backoff) so the bot self-heals. Each respawn is
+    # logged. A clean config won't loop; a bad one logs every 5s (visible).
+    (
+      while true; do
+        HOME=/data/hermes HERMES_HOME=/data/hermes \
+          /command/s6-setuidgid hermes /opt/hermes/.venv/bin/hermes gateway run \
+          >>/data/hermes/gateway.log 2>&1
+        echo "[init] Telegram gateway exited (code $?); respawning in 5s..." >>/data/hermes/gateway.log
+        sleep 5
+      done
+    ) &
 else
     echo "[init] TELEGRAM_BOT_TOKEN unset — Telegram gateway not started" >&2
 fi
