@@ -1,14 +1,14 @@
-# Fly.io deployment — Tokyo (nrt), real kernel-TUN Tailscale.
+# Fly.io deployment — real kernel-TUN Tailscale, tailnet-only.
 # No [[services]]/[http_service] block => no public ingress; the agent is
 # reachable ONLY over the tailnet (via `tailscale serve`).
-app = "hermes-acp-nrt"
-primary_region = "nrt"
+app = "hermes-remote-acp"
+primary_region = "iad"   # pick a Fly region near you (e.g. nrt, iad, ams, syd)
 
 [build]
   dockerfile = "Dockerfile"
 
 [env]
-  TS_HOSTNAME = "hermes-tokyo"
+  TS_HOSTNAME = "hermes"   # tailnet node name → wss://<TS_HOSTNAME>.<your-tailnet>.ts.net/
 
 # One volume (Fly allows only one per machine) holds both Tailscale state
 # (/data/tailscale) and Hermes home (/data/hermes) — see init.sh.
