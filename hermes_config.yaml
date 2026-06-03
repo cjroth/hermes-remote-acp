@@ -10,12 +10,6 @@ model:
   # $0.20/M output that reserves only ~$0.003.
   max_tokens: 16000
 
-# Telegram response streaming — the bot progressively edits its message as
-# tokens arrive instead of waiting for the full reply. "edit" transport
-# (progressive editMessageText) is the most compatible mode; Telegram's edit
-# rate limits are handled by edit_interval/buffer_threshold defaults. Applied at
-# gateway startup (NOT via an in-process restart, which is what crashed it
-# before).
-streaming:
-  enabled: true
-  transport: edit
+# NOTE: Telegram response streaming (top-level `streaming: {enabled: true}`)
+# destabilized the gateway — reverted to off until debugged. Re-enable carefully
+# and watch /data/hermes/gateway.log for crashes after the first message.
