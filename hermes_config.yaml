@@ -10,6 +10,11 @@ model:
   # $0.20/M output that reserves only ~$0.003.
   max_tokens: 16000
 
-# NOTE: Telegram response streaming (top-level `streaming: {enabled: true}`)
-# destabilized the gateway — reverted to off until debugged. Re-enable carefully
-# and watch /data/hermes/gateway.log for crashes after the first message.
+# Telegram response streaming. transport "auto" = prefer Telegram's native
+# draft streaming (sendMessageDraft, Bot API 9.5+) for smooth per-token updates,
+# falling back to progressive editMessageText if unsupported. Applied at gateway
+# startup. (An earlier attempt with transport "edit" coincided with gateway
+# instability; re-enabling here with live log monitoring to catch any crash.)
+streaming:
+  enabled: true
+  transport: auto
