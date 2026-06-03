@@ -1,4 +1,20 @@
+# --- Build the CSP `ctx` CLI (Context Sync Protocol) -------------------------
+# Built in a throwaway Rust stage and copied into the final image as a single
+# self-contained binary, so the runtime image carries no Rust toolchain.
+# Pinned to a commit for reproducible builds (bump CSP_REV to upgrade);
+# `--locked` uses the repo's committed Cargo.lock so transitive deps don't
+# drift. `ring` (0.17) ships pregenerated asm, so the stock Rust image's gcc
+# is the only build dep needed.
+FROM docker.io/library/rust:1-bookworm AS cspbuild
+ARG CSP_GIT=https://github.com/cjroth/csp.git
+ARG CSP_REV=57f0ccf089599cb3f583e4de2fcca9c1f63c2406
+RUN cargo install --git "$CSP_GIT" --rev "$CSP_REV" --locked ctx --root /out
+
 FROM docker.io/nousresearch/hermes-agent:latest
+
+# CSP `ctx` CLI (built above) — keeps /data/vault synced with a remote CSP
+# listener (clone-on-first-boot, then watch). See the CSP block in init.sh.
+COPY --from=cspbuild /out/bin/ctx /usr/local/bin/ctx
 
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace

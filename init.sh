@@ -109,6 +109,52 @@ else
     echo "[init] TELEGRAM_BOT_TOKEN unset — Telegram gateway not started" >&2
 fi
 
+# --- CSP context vault sync (optional, runs as hermes user, background) -------
+# Keeps /data/vault (on the persistent volume) synced with a remote CSP vault
+# via the `ctx` CLI: clone it on the first boot, then `watch` (reconnecting to
+# the saved origin) on every boot after.
+#
+# Auth is CSP's §10 enrollment model: CTX_AUTH_KEY is a pre-shared, opaque
+# bearer secret (no fixed format) that `ctx` sends on the WS upgrade. A remote
+# requiring enrollment accepts it and durably authorizes THIS node's own
+# public key, so the device just generates its own identity — persisted at
+# /data/csp/id_ed25519 (on the volume) so it stays stable across restarts and
+# doesn't churn fresh enrollments. The reverse trust (this node trusting the
+# server) is bootstrapped by `clone` via trust-on-first-use.
+#   CTX_AUTH_KEY = pre-shared enrollment secret. REQUIRED (read directly by
+#                  `ctx`); unset ⇒ vault sync is skipped with a warning.
+#   CSP_REMOTE   = remote vault URL (wss://host[:port], or ws://… if plaintext).
+if [ -z "${CTX_AUTH_KEY:-}" ]; then
+    echo "[init] CTX_AUTH_KEY unset — no auth key set; CSP vault sync not started" >&2
+elif [ -z "${CSP_REMOTE:-}" ]; then
+    echo "[init] CSP_REMOTE unset — no remote to connect to; CSP vault sync not started" >&2
+else
+    echo "[init] starting CSP vault sync (hermes user, supervised) → $CSP_REMOTE" >&2
+    mkdir -p /data/csp /data/vault
+    chown -R hermes:hermes /data/csp /data/vault 2>/dev/null || true
+    # Supervised respawn loop (same pattern as the gateway above): ctx runs as
+    # a plain background process here, so this restarts it (5s backoff) if it
+    # ever exits. The clone-vs-watch choice is re-evaluated each iteration, so
+    # once /data/vault exists, respawns take the watch path (clone refuses to
+    # clobber an existing vault). ctx auto-generates the identity at
+    # CTX_IDENTITY on first run; CTX_AUTH_KEY is inherited from the env.
+    (
+      while true; do
+        if [ -d /data/vault/.context ]; then
+          HOME=/data/hermes CTX_IDENTITY=/data/csp/id_ed25519 CTX_AUTH_KEY="$CTX_AUTH_KEY" \
+            /command/s6-setuidgid hermes ctx --dir /data/vault watch \
+            >>/data/csp/csp.log 2>&1
+        else
+          HOME=/data/hermes CTX_IDENTITY=/data/csp/id_ed25519 CTX_AUTH_KEY="$CTX_AUTH_KEY" \
+            /command/s6-setuidgid hermes ctx clone "$CSP_REMOTE" /data/vault --watch \
+            >>/data/csp/csp.log 2>&1
+        fi
+        echo "[init] CSP vault sync exited (code $?); respawning in 5s..." >>/data/csp/csp.log
+        sleep 5
+      done
+    ) &
+fi
+
 # --- bridge (runs as the hermes user, foreground = keeps container alive) -----
 # Wait for the cert so the bridge can serve WSS; fall back to plain ws if absent.
 echo "[init] waiting for TLS cert..." >&2

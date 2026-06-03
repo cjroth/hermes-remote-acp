@@ -69,6 +69,8 @@ Container environment variables / secrets:
 | `OPENROUTER_API_KEY` | yes | Inference via OpenRouter |
 | `TS_AUTHKEY` | yes | Tailscale auth key — **non-ephemeral, reusable** (ephemeral nodes can't hold TLS certs) |
 | `TS_HOSTNAME` | no | Tailnet node name (default `hermes`) |
+| `CTX_AUTH_KEY` | no | [CSP](https://github.com/cjroth/csp) §10 enrollment secret — an opaque pre-shared bearer key (no fixed format) that enrolls this container into a remote vault and syncs `/data/vault`. Unset ⇒ vault sync is skipped with a logged warning. |
+| `CSP_REMOTE` | no | CSP remote vault URL (`wss://host[:port]`, or `ws://…` if plaintext) to clone/watch. Required alongside `CTX_AUTH_KEY` for sync to start. |
 
 **Persistent volume at `/var/lib/tailscale`:** keeps the node identity + TLS cert
 across restarts (an on-disk state dir is required for certs).
@@ -92,3 +94,11 @@ Then connect an ACP client to `wss://<node>.<your-tailnet>.ts.net/`.
 - The cert is provisioned at boot via `tailscale cert` and cached in the volume.
   Manual certs don't auto-renew the way `serve --https` does, so a periodic
   restart (well within the ~90-day cert life) re-provisions it.
+- **CSP vault sync** (`CTX_AUTH_KEY` + `CSP_REMOTE`): the `ctx` binary clones the
+  remote vault into `/data/vault` on first boot, then `watch`es it (the synced
+  folder lives on the persistent volume, so it survives restarts and isn't
+  re-cloned). `CTX_AUTH_KEY` is CSP's §10 pre-shared enrollment secret: `ctx`
+  sends it as a bearer token on connect, the remote authorizes this node's
+  auto-generated key (persisted at `/data/csp/id_ed25519`), and after first
+  enrollment the node's key is durable in the remote's `authorized_keys`. Logs
+  go to `/data/csp/csp.log` inside the container.
