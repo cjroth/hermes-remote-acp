@@ -22,6 +22,16 @@ chown hermes:hermes /data/hermes 2>/dev/null || true
 install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yaml 2>/dev/null || \
     cp /opt/seed/config.yaml /data/hermes/config.yaml
 
+# Refresh the bundled `proton` skill into the writable skills dir on every boot.
+# The skill loader seeds bundled skills only when ABSENT, so without this an
+# updated skill in the image would never reach /data/hermes/skills after the
+# first deploy. Overwrite from the image (source of truth) so deploys propagate.
+if [ -d /opt/hermes/skills/communication/proton ]; then
+    mkdir -p /data/hermes/skills/communication
+    cp -rf /opt/hermes/skills/communication/proton /data/hermes/skills/communication/
+    chown -R hermes:hermes /data/hermes/skills/communication/proton 2>/dev/null || true
+fi
+
 # Notion: the `ntn` CLI and the bundled `notion` skill read NOTION_API_TOKEN;
 # alias it from the NOTION_API_KEY secret so the agent uses the CLI path. Both
 # the gateway and the bridge (→ hermes-acp) inherit this exported env.
