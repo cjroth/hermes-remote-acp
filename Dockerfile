@@ -35,6 +35,11 @@ COPY --from=cspbuild /out/bin/ctx /usr/local/bin/ctx
 # block in init.sh.
 COPY --from=hydroxidebuild /out/hydroxide /usr/local/bin/hydroxide
 
+# `proton` skill — teaches the agent to use the hydroxide bridge (mail/calendar/
+# contacts) via a stdlib-only helper script. Bundled alongside the image's other
+# skills so it's picked up by the skill loader.
+COPY skills/proton /opt/hermes/skills/communication/proton
+
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace
 # netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws` pkg.
