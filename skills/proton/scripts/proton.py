@@ -41,6 +41,9 @@ import smtplib
 import sys
 import urllib.request
 import uuid
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 HOST = os.environ.get("HYDROXIDE_HOST", "127.0.0.1")
@@ -186,26 +189,35 @@ def list_events(cal_needle, start, end):
 
 
 def _send_invite_email(attendee, summary, vevent_lines):
-    # iMIP invitation: a text/calendar METHOD:REQUEST message. Proton Calendar
-    # (and other clients) auto-surface the event in the recipient's calendar.
+    # iMIP invitation. Proton's send API only accepts a text/plain or text/html
+    # body, so the calendar goes as a text/calendar;method=REQUEST ATTACHMENT
+    # (clients, incl. Proton, detect ICS attachments as invitations). hydroxide
+    # routes the plain part as the body and uploads the .ics as an attachment.
     invite = "\r\n".join(
         ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//hermes//proton-skill//EN",
          "METHOD:REQUEST"] + vevent_lines + ["END:VCALENDAR"]) + "\r\n"
-    msg = (
-        f"From: {USER}\r\n"
-        f"To: {attendee}\r\n"
-        f"Subject: Invitation: {summary}\r\n"
-        f"Date: {email.utils.formatdate(localtime=True)}\r\n"
-        f"Message-ID: {email.utils.make_msgid(domain='proton.me')}\r\n"
-        "MIME-Version: 1.0\r\n"
-        'Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n'
-        "Content-Transfer-Encoding: 8bit\r\n"
-        "\r\n" + invite)
+
+    root = MIMEMultipart("mixed")
+    root["From"] = USER
+    root["To"] = attendee
+    root["Subject"] = f"Invitation: {summary}"
+    root["Date"] = email.utils.formatdate(localtime=True)
+    root["Message-ID"] = email.utils.make_msgid(domain="proton.me")
+    root.attach(MIMEText(f"You're invited to: {summary}", "plain", "utf-8"))
+
+    cal = MIMEBase("text", "calendar")
+    cal.set_param("method", "REQUEST")
+    cal.set_param("charset", "UTF-8")
+    cal.set_payload(invite.encode("utf-8"))
+    encoders.encode_base64(cal)
+    cal.add_header("Content-Disposition", "attachment", filename="invite.ics")
+    root.attach(cal)
+
     s = smtplib.SMTP(HOST, SMTP_PORT, timeout=30)
     try:
         s.ehlo()
         s.login(USER, PASS)
-        s.sendmail(USER, [attendee], msg.encode("utf-8"))
+        s.sendmail(USER, [attendee], root.as_bytes())
     finally:
         s.quit()
 
