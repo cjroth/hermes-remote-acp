@@ -172,13 +172,20 @@ def list_events(cal_needle, start, end):
         def field(name):
             m = re.search(rf"^{name}[:;][^\r\n]*", data, re.M)
             return m.group(0).split(":", 1)[-1].strip() if m else None
+        # ATTENDEE repeats; capture each invitee's email + PARTSTAT (RSVP).
+        attendees = []
+        for line in re.findall(r"^ATTENDEE[^\r\n]*", data, re.M):
+            email = line.split("mailto:", 1)[-1].strip() if "mailto:" in line else None
+            ps = re.search(r"PARTSTAT=([^;:]+)", line)
+            attendees.append({"email": email, "status": ps.group(1) if ps else None})
         events.append({"uid": field("UID"), "summary": field("SUMMARY"),
                        "start": field("DTSTART"), "end": field("DTEND"),
-                       "location": field("LOCATION"), "href": _href(chunk)})
+                       "location": field("LOCATION"), "attendees": attendees,
+                       "href": _href(chunk)})
     return {"calendar": cal["name"], "count": len(events), "events": events}
 
 
-def create_event(cal_needle, summary, start, end, desc, location):
+def create_event(cal_needle, summary, start, end, desc, location, attendees=None):
     cal = resolve_calendar(cal_needle)
     uid = "hermes-" + uuid.uuid4().hex[:12]
     now = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -189,13 +196,24 @@ def create_event(cal_needle, summary, start, end, desc, location):
         lines.append(f"DESCRIPTION:{desc}")
     if location:
         lines.append(f"LOCATION:{location}")
+    if attendees:
+        # An event with attendees needs an ORGANIZER (the account itself).
+        lines.append(f"ORGANIZER;CN={USER}:mailto:{USER}")
+        for a in attendees:
+            a = a.strip()
+            if not a:
+                continue
+            lines.append(
+                f"ATTENDEE;CN={a};ROLE=REQ-PARTICIPANT;RSVP=TRUE;"
+                f"PARTSTAT=NEEDS-ACTION:mailto:{a}")
     lines += ["SEQUENCE:0", "END:VEVENT", "END:VCALENDAR"]
     ics = "\r\n".join(lines) + "\r\n"
     st, xml = dav("PUT", CALDAV_PORT, f"{cal['href']}/{uid}.ics", ics,
                   ctype="text/calendar; charset=utf-8")
     if st not in (201, 204):
         die(f"create event failed: HTTP {st}: {xml[:300]}")
-    return {"created": True, "uid": uid, "calendar": cal["name"], "summary": summary}
+    return {"created": True, "uid": uid, "calendar": cal["name"],
+            "summary": summary, "attendees": attendees or []}
 
 
 def delete_event(cal_needle, uid):
@@ -368,6 +386,8 @@ def main():
     sp.add_argument("--end", required=True)
     sp.add_argument("--desc")
     sp.add_argument("--location")
+    sp.add_argument("--attendee", action="append", metavar="EMAIL",
+                    help="invite an attendee (repeatable)")
 
     sp = sub.add_parser("delete-event", help="delete a calendar event by uid")
     sp.add_argument("calendar")
@@ -391,7 +411,7 @@ def main():
     elif a.cmd == "events":
         out(list_events(a.calendar, a.start, a.end))
     elif a.cmd == "create-event":
-        out(create_event(a.calendar, a.summary, a.start, a.end, a.desc, a.location))
+        out(create_event(a.calendar, a.summary, a.start, a.end, a.desc, a.location, a.attendee))
     elif a.cmd == "delete-event":
         out(delete_event(a.calendar, a.uid))
     elif a.cmd == "contacts":

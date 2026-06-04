@@ -81,6 +81,12 @@ python3 scripts/proton.py create-event "My calendar" \
     --summary "Lunch with Sam" --start 2026-06-10T15:00 --end 2026-06-10T16:00 \
     --location "Cafe" --desc "monthly catch-up"
 
+# invite attendees (repeat --attendee). Proton sends invitations and the
+# event records each invitee + RSVP status (shown in `events` output).
+python3 scripts/proton.py create-event "My calendar" \
+    --summary "Team sync" --start 2026-06-12T17:00 --end 2026-06-12T17:30 \
+    --attendee alice@proton.me --attendee bob@example.com
+
 # delete by uid (uid comes from `events` output)
 python3 scripts/proton.py delete-event "My calendar" hermes-ab12cd34ef56
 ```

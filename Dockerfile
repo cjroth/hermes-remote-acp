@@ -18,7 +18,7 @@ RUN cargo install --git "$CSP_GIT" --rev "$CSP_REV" --locked ctx --root /out
 # binary is fully static and runs in the runtime image as-is.
 FROM docker.io/library/golang:1.24-bookworm AS hydroxidebuild
 ARG HYDROXIDE_GIT=https://github.com/cjroth/hydroxide.git
-ARG HYDROXIDE_REV=56042f17095782dcb2fe1dbdc06921275ded3272
+ARG HYDROXIDE_REV=8c87f322eb9d7b8c14c06a5873de81ceb3beb41a
 RUN git clone "$HYDROXIDE_GIT" /src \
     && cd /src && git checkout "$HYDROXIDE_REV" \
     && CGO_ENABLED=0 go build -trimpath -o /out/hydroxide ./cmd/hydroxide
