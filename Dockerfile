@@ -10,11 +10,30 @@ ARG CSP_GIT=https://github.com/cjroth/csp.git
 ARG CSP_REV=57f0ccf089599cb3f583e4de2fcca9c1f63c2406
 RUN cargo install --git "$CSP_GIT" --rev "$CSP_REV" --locked ctx --root /out
 
+# --- Build hydroxide (self-hosted ProtonMail bridge, CalDAV-enabled fork) -----
+# Throwaway Go stage; the final image carries only the static binary (no Go
+# toolchain). Our fork adds CalDAV support (PR #282 rebased onto upstream +
+# go-webdav v0.7) plus event create/read/time-range fixes. Pinned to a commit
+# for reproducible builds (bump HYDROXIDE_REV to upgrade). CGO disabled so the
+# binary is fully static and runs in the runtime image as-is.
+FROM docker.io/library/golang:1.24-bookworm AS hydroxidebuild
+ARG HYDROXIDE_GIT=https://github.com/cjroth/hydroxide.git
+ARG HYDROXIDE_REV=a4a1037fdc5cdba173c1d6ae4dfa888539ba9198
+RUN git clone "$HYDROXIDE_GIT" /src \
+    && cd /src && git checkout "$HYDROXIDE_REV" \
+    && CGO_ENABLED=0 go build -trimpath -o /out/hydroxide ./cmd/hydroxide
+
 FROM docker.io/nousresearch/hermes-agent:latest
 
 # CSP `ctx` CLI (built above) — keeps /data/vault synced with a remote CSP
 # listener (clone-on-first-boot, then watch). See the CSP block in init.sh.
 COPY --from=cspbuild /out/bin/ctx /usr/local/bin/ctx
+
+# hydroxide (built above) — self-hosted ProtonMail bridge. init.sh runs
+# `hydroxide serve` (IMAP/SMTP/CardDAV/CalDAV on 127.0.0.1) when seeded with a
+# stored credential file via the HYDROXIDE_AUTH_B64 secret. See the hydroxide
+# block in init.sh.
+COPY --from=hydroxidebuild /out/hydroxide /usr/local/bin/hydroxide
 
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace

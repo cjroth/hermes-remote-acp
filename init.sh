@@ -155,6 +155,46 @@ else
     ) &
 fi
 
+# --- hydroxide: self-hosted ProtonMail bridge (optional, hermes user, bg) -----
+# Exposes ProtonMail over local IMAP(1143)/SMTP(1025)/CardDAV(8080)/CalDAV(8081)
+# so the agent can reach Proton mail / contacts / calendar via localhost.
+#
+# Auth is non-interactive. `hydroxide auth` (Proton password + 2FA) is run ONCE
+# locally; its encrypted credential file is shipped as the HYDROXIDE_AUTH_B64
+# secret (base64 of ~/.config/hydroxide/auth.json). The file holds a rotating
+# refresh token — no 2FA at boot. We seed it onto the volume on the FIRST boot
+# only; hydroxide then refreshes the token in place at XDG_CONFIG_HOME, so
+# re-seeding from a now-stale secret can never clobber a fresher token.
+# Servers bind 127.0.0.1 only — never exposed off-box (matches the tailnet-only
+# posture; nothing here adds public ingress).
+#   HYDROXIDE_AUTH_B64 = base64 of a working auth.json. REQUIRED; unset ⇒ skip.
+if [ -z "${HYDROXIDE_AUTH_B64:-}" ]; then
+    echo "[init] HYDROXIDE_AUTH_B64 unset — ProtonMail bridge not started" >&2
+else
+    echo "[init] starting hydroxide ProtonMail bridge (hermes user, supervised)..." >&2
+    # XDG_CONFIG_HOME=/data => hydroxide reads/writes /data/hydroxide/auth.json
+    # (os.UserConfigDir) and keeps its message cache db there too — all on the
+    # persistent volume.
+    mkdir -p /data/hydroxide
+    if [ ! -f /data/hydroxide/auth.json ]; then
+        echo "$HYDROXIDE_AUTH_B64" | base64 -d > /data/hydroxide/auth.json
+        echo "[init] seeded hydroxide auth.json onto volume (first boot)" >&2
+    fi
+    chown -R hermes:hermes /data/hydroxide 2>/dev/null || true
+    # Supervised respawn loop (same pattern as the gateway / CSP blocks above):
+    # hydroxide is a plain background process here, so this restarts it (5s
+    # backoff) if it ever exits.
+    (
+      while true; do
+        HOME=/data/hydroxide XDG_CONFIG_HOME=/data \
+          /command/s6-setuidgid hermes hydroxide serve \
+          >>/data/hydroxide/hydroxide.log 2>&1
+        echo "[init] hydroxide exited (code $?); respawning in 5s..." >>/data/hydroxide/hydroxide.log
+        sleep 5
+      done
+    ) &
+fi
+
 # --- bridge (runs as the hermes user, foreground = keeps container alive) -----
 # Wait for the cert so the bridge can serve WSS; fall back to plain ws if absent.
 echo "[init] waiting for TLS cert..." >&2
