@@ -185,35 +185,75 @@ def list_events(cal_needle, start, end):
     return {"calendar": cal["name"], "count": len(events), "events": events}
 
 
+def _send_invite_email(attendee, summary, vevent_lines):
+    # iMIP invitation: a text/calendar METHOD:REQUEST message. Proton Calendar
+    # (and other clients) auto-surface the event in the recipient's calendar.
+    invite = "\r\n".join(
+        ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//hermes//proton-skill//EN",
+         "METHOD:REQUEST"] + vevent_lines + ["END:VCALENDAR"]) + "\r\n"
+    msg = (
+        f"From: {USER}\r\n"
+        f"To: {attendee}\r\n"
+        f"Subject: Invitation: {summary}\r\n"
+        f"Date: {email.utils.formatdate(localtime=True)}\r\n"
+        f"Message-ID: {email.utils.make_msgid(domain='proton.me')}\r\n"
+        "MIME-Version: 1.0\r\n"
+        'Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n'
+        "Content-Transfer-Encoding: 8bit\r\n"
+        "\r\n" + invite)
+    s = smtplib.SMTP(HOST, SMTP_PORT, timeout=30)
+    try:
+        s.ehlo()
+        s.login(USER, PASS)
+        s.sendmail(USER, [attendee], msg.encode("utf-8"))
+    finally:
+        s.quit()
+
+
 def create_event(cal_needle, summary, start, end, desc, location, attendees=None):
     cal = resolve_calendar(cal_needle)
     uid = "hermes-" + uuid.uuid4().hex[:12]
     now = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//hermes//proton-skill//EN",
-             "BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{now}",
-             f"DTSTART:{_ics_dt(start)}", f"DTEND:{_ics_dt(end)}", f"SUMMARY:{summary}"]
+    vevent = ["BEGIN:VEVENT", f"UID:{uid}", f"DTSTAMP:{now}",
+              f"DTSTART:{_ics_dt(start)}", f"DTEND:{_ics_dt(end)}", f"SUMMARY:{summary}"]
     if desc:
-        lines.append(f"DESCRIPTION:{desc}")
+        vevent.append(f"DESCRIPTION:{desc}")
     if location:
-        lines.append(f"LOCATION:{location}")
-    if attendees:
+        vevent.append(f"LOCATION:{location}")
+    clean = [a.strip() for a in (attendees or []) if a.strip()]
+    if clean:
         # An event with attendees needs an ORGANIZER (the account itself).
-        lines.append(f"ORGANIZER;CN={USER}:mailto:{USER}")
-        for a in attendees:
-            a = a.strip()
-            if not a:
-                continue
-            lines.append(
+        vevent.append(f"ORGANIZER;CN={USER}:mailto:{USER}")
+        for a in clean:
+            vevent.append(
                 f"ATTENDEE;CN={a};ROLE=REQ-PARTICIPANT;RSVP=TRUE;"
                 f"PARTSTAT=NEEDS-ACTION:mailto:{a}")
-    lines += ["SEQUENCE:0", "END:VEVENT", "END:VCALENDAR"]
-    ics = "\r\n".join(lines) + "\r\n"
+    vevent.append("SEQUENCE:0")
+    vevent.append("END:VEVENT")
+
+    ics = "\r\n".join(["BEGIN:VCALENDAR", "VERSION:2.0",
+                       "PRODID:-//hermes//proton-skill//EN"] + vevent + ["END:VCALENDAR"]) + "\r\n"
     st, xml = dav("PUT", CALDAV_PORT, f"{cal['href']}/{uid}.ics", ics,
                   ctype="text/calendar; charset=utf-8")
     if st not in (201, 204):
         die(f"create event failed: HTTP {st}: {xml[:300]}")
-    return {"created": True, "uid": uid, "calendar": cal["name"],
-            "summary": summary, "attendees": attendees or []}
+
+    # Deliver invitations: the calendar API stores attendees, but the actual
+    # invite (which makes the event appear in the invitee's calendar) is an
+    # iMIP email the organizer sends.
+    invited, invite_errors = [], {}
+    for a in clean:
+        try:
+            _send_invite_email(a, summary, vevent)
+            invited.append(a)
+        except Exception as e:
+            invite_errors[a] = repr(e)
+
+    result = {"created": True, "uid": uid, "calendar": cal["name"],
+              "summary": summary, "attendees": clean, "invited": invited}
+    if invite_errors:
+        result["invite_errors"] = invite_errors
+    return result
 
 
 def delete_event(cal_needle, uid):
