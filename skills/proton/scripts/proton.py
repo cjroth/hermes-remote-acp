@@ -253,16 +253,98 @@ def create_event(cal_needle, summary, start, end, desc, location, attendees=None
     # Deliver invitations: the calendar API stores attendees, but the actual
     # invite (which makes the event appear in the invitee's calendar) is an
     # iMIP email the organizer sends.
-    invited, invite_errors = [], {}
-    for a in clean:
-        try:
-            _send_invite_email(a, summary, vevent)
-            invited.append(a)
-        except Exception as e:
-            invite_errors[a] = repr(e)
+    invited, invite_errors = _deliver_invites(clean, summary, vevent)
 
     result = {"created": True, "uid": uid, "calendar": cal["name"],
               "summary": summary, "attendees": clean, "invited": invited}
+    if invite_errors:
+        result["invite_errors"] = invite_errors
+    return result
+
+
+def _deliver_invites(emails, summary, vevent_lines):
+    invited, errors = [], {}
+    for a in emails:
+        try:
+            _send_invite_email(a, summary, vevent_lines)
+            invited.append(a)
+        except Exception as e:
+            errors[a] = repr(e)
+    return invited, errors
+
+
+def _ics_lines(ics):
+    # Normalize newlines and unfold RFC5545 continuation lines (a line break
+    # followed by space/tab continues the previous line).
+    ics = ics.replace("\r\n", "\n").replace("\r", "\n")
+    ics = re.sub(r"\n[ \t]", "", ics)
+    return [ln for ln in ics.split("\n") if ln != ""]
+
+
+def add_attendee(cal_needle, uid, attendees):
+    cal = resolve_calendar(cal_needle)
+    match = [e for e in list_events(cal_needle, None, None)["events"] if e["uid"] == uid]
+    if not match:
+        die(f"no event with uid {uid!r} in {cal['name']!r}")
+    href = match[0]["href"]
+    summary = match[0].get("summary") or ""
+
+    st, ics = dav("GET", CALDAV_PORT, href)
+    if st != 200:
+        die(f"could not read event: HTTP {st}: {ics[:200]}")
+    lines = _ics_lines(ics)
+
+    existing = set()
+    for ln in lines:
+        if ln.upper().startswith("ATTENDEE") and "mailto:" in ln.lower():
+            existing.add(ln.split("mailto:", 1)[-1].strip().lower())
+    new = [a.strip() for a in attendees if a.strip() and a.strip().lower() not in existing]
+    if not new:
+        die("all given attendees are already on the event")
+
+    has_org = any(ln.upper().startswith("ORGANIZER") for ln in lines)
+    out, seq_bumped = [], False
+    for ln in lines:
+        if ln.upper().startswith("SEQUENCE"):
+            try:
+                n = int(ln.split(":", 1)[1].strip())
+            except (ValueError, IndexError):
+                n = 0
+            out.append(f"SEQUENCE:{n + 1}")
+            seq_bumped = True
+            continue
+        if ln.strip().upper() == "END:VEVENT":
+            if not has_org:
+                out.append(f"ORGANIZER;CN={USER}:mailto:{USER}")
+            for a in new:
+                out.append(f"ATTENDEE;CN={a};ROLE=REQ-PARTICIPANT;RSVP=TRUE;"
+                           f"PARTSTAT=NEEDS-ACTION:mailto:{a}")
+            if not seq_bumped:
+                out.append("SEQUENCE:1")
+                seq_bumped = True
+            out.append(ln)
+            continue
+        out.append(ln)
+
+    new_ics = "\r\n".join(out) + "\r\n"
+    st, xml = dav("PUT", CALDAV_PORT, href, new_ics, ctype="text/calendar; charset=utf-8")
+    if st not in (200, 201, 204):
+        die(f"update event failed: HTTP {st}: {xml[:300]}")
+
+    # Email the newly added invitees (the VEVENT block, with all attendees).
+    vevent = []
+    capture = False
+    for ln in out:
+        if ln.strip().upper() == "BEGIN:VEVENT":
+            capture = True
+        if capture:
+            vevent.append(ln)
+        if ln.strip().upper() == "END:VEVENT":
+            break
+    invited, invite_errors = _deliver_invites(new, summary, vevent)
+
+    result = {"updated": True, "uid": uid, "calendar": cal["name"],
+              "summary": summary, "added": new, "invited": invited}
     if invite_errors:
         result["invite_errors"] = invite_errors
     return result
@@ -445,6 +527,12 @@ def main():
     sp.add_argument("calendar")
     sp.add_argument("uid")
 
+    sp = sub.add_parser("add-attendee", help="invite attendees to an existing event")
+    sp.add_argument("calendar")
+    sp.add_argument("uid")
+    sp.add_argument("--attendee", action="append", required=True, metavar="EMAIL",
+                    help="attendee to add (repeatable)")
+
     sub.add_parser("contacts", help="list contacts")
 
     a = p.parse_args()
@@ -466,6 +554,8 @@ def main():
         out(create_event(a.calendar, a.summary, a.start, a.end, a.desc, a.location, a.attendee))
     elif a.cmd == "delete-event":
         out(delete_event(a.calendar, a.uid))
+    elif a.cmd == "add-attendee":
+        out(add_attendee(a.calendar, a.uid, a.attendee))
     elif a.cmd == "contacts":
         out(list_contacts())
 

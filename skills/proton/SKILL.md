@@ -87,6 +87,11 @@ python3 scripts/proton.py create-event "My calendar" \
     --summary "Team sync" --start 2026-06-12T17:00 --end 2026-06-12T17:30 \
     --attendee alice@proton.me --attendee bob@example.com
 
+# invite people to an EXISTING event (uid from `events`); emails the new
+# invitees and bumps the event SEQUENCE.
+python3 scripts/proton.py add-attendee "My calendar" hermes-ab12cd34ef56 \
+    --attendee carol@proton.me
+
 # delete by uid (uid comes from `events` output)
 python3 scripts/proton.py delete-event "My calendar" hermes-ab12cd34ef56
 ```
