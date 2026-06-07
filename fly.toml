@@ -1,7 +1,7 @@
 # Fly.io deployment — real kernel-TUN Tailscale, tailnet-only.
 # No [[services]]/[http_service] block => no public ingress; the agent is
 # reachable ONLY over the tailnet (via `tailscale serve`).
-app = "hermes-remote-acp"
+app = "hermes-acp-nrt"
 primary_region = "iad"   # pick a Fly region near you (e.g. nrt, iad, ams, syd)
 
 [build]
@@ -9,6 +9,9 @@ primary_region = "iad"   # pick a Fly region near you (e.g. nrt, iad, ams, syd)
 
 [env]
   TS_HOSTNAME = "hermes"   # tailnet node name → wss://<TS_HOSTNAME>.<your-tailnet>.ts.net/
+  # USER_PRIMARY_EMAIL (operator's inbox for digests / calendar+email invites) is
+  # set as a Fly secret, not here, to keep a personal address out of the repo:
+  #   fly secrets set -a <app> USER_PRIMARY_EMAIL=you@example.com
 
 # One volume (Fly allows only one per machine) holds both Tailscale state
 # (/data/tailscale) and Hermes home (/data/hermes) — see init.sh.

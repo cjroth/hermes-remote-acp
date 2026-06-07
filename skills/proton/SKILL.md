@@ -109,6 +109,11 @@ Lists contacts (name + emails) across the account's address books.
 
 ## Notes & limits
 
+- **The operator's own email** (for calendar/email invites — e.g. inviting
+  yourself to an event, or who to address) is the `USER_PRIMARY_EMAIL`
+  environment variable. Use it when you need the user's address; if it's unset,
+  say so rather than guessing. (`HYDROXIDE_USER` is the Proton login used as the
+  transport's From, which may differ from the user's primary inbox.)
 - **Creating a calendar** is not supported (the bridge returns 501). Create new
   calendars in the Proton web app; this skill operates on existing ones.
 - Everything is **localhost-only** — these ports are never exposed off the

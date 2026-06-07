@@ -40,6 +40,14 @@ COPY --from=hydroxidebuild /out/hydroxide /usr/local/bin/hydroxide
 # skills so it's picked up by the skill loader.
 COPY skills/proton /opt/hermes/skills/communication/proton
 
+# `email-me` — generic "send something to me" transport over the Proton SMTP
+# bridge; reused by digest/notification skills so they don't hand-roll SMTP.
+COPY skills/email-me /opt/hermes/skills/communication/email-me
+
+# `lesswrong-digest` — fetches the day's LessWrong posts + comments and emails
+# the operator a summary (delivery delegated to `email-me`).
+COPY skills/lesswrong-digest /opt/hermes/skills/research/lesswrong-digest
+
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace
 # netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws` pkg.

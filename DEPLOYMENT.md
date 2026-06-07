@@ -64,6 +64,7 @@ Container environment variables / secrets:
 | `MATRIX_RECOVERY_KEY` | no | The bot account's Beeper recovery key — lets it cross-sign its own device so other clients share encryption sessions with it. |
 | `MATRIX_ALLOWED_USERS` | no | Comma-separated Matrix user IDs allowed to talk to the bot (e.g. your main `@you:beeper.com`). Lock this down. |
 | `HYDROXIDE_AUTH_B64` | no | base64 of a working hydroxide `auth.json` (mint it once locally with `hydroxide auth`). Presence auto-starts the ProtonMail bridge (IMAP/SMTP/CalDAV/CardDAV on localhost). |
+| `USER_PRIMARY_EMAIL` | no | The operator's own email address — used as "the user's email" for calendar/email invites and as the default recipient for the `email-me` / `lesswrong-digest` skills. Skills that need it report when it's unset rather than guessing. |
 | `NOTION_API_KEY` | no | Notion integration token — aliased to `NOTION_API_TOKEN` so the `ntn` CLI and the `notion` skill light up. |
 | `CTX_AUTH_KEY` | no | [CSP](https://github.com/cjroth/csp) §10 enrollment secret — an opaque pre-shared bearer key (no fixed format) that enrolls this container into a remote vault and syncs `/data/vault`. Unset ⇒ vault sync is skipped with a logged warning. |
 | `CSP_REMOTE` | no | CSP remote vault URL (`wss://host[:port]`, or `ws://…` if plaintext) to clone/watch. Required alongside `CTX_AUTH_KEY` for sync to start. |
