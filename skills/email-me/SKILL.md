@@ -40,17 +40,36 @@ environment, already set on this machine. The script prints JSON:
 `{"sent": true, ...}` or `{"error": "..."}`. If `USER_PRIMARY_EMAIL` is unset
 and no `--to` is passed, it reports that the email isn't set.
 
+### Body formats
+
+| Flag         | Sends as                | Use for |
+|--------------|-------------------------|---------|
+| *(none)*     | `text/plain`            | short notes |
+| `--markdown` | styled HTML (+ plain fallback) | **reports & digests — the nice path** |
+| `--html`     | `text/html` verbatim    | when you've already built the HTML |
+
+`--markdown` is the recommended way to get a **good-looking email**: write the
+body in plain Markdown and the script renders it into a clean, responsive HTML
+email (system fonts, a centered card, styled headings / links / lists /
+blockquotes / code) and sends it as `multipart/alternative` — so HTML clients
+get the formatted version and others fall back to the raw Markdown. Supported
+Markdown: headings, **bold**, *italic*, `code`, fenced code blocks, links and
+bare URLs, ordered/unordered lists, blockquotes, and `---` rules.
+
 ### Common forms
 
 ```bash
 # Plain-text note to the operator (default recipient)
 python3 scripts/send.py --subject "Backup done" --body "Nightly backup finished OK."
 
-# Long / structured body — pass a file instead of a giant CLI arg (more robust)
-python3 scripts/send.py --subject "Daily digest" --body-file /tmp/digest.txt
+# Nicely formatted report/digest — write Markdown, pipe it in
+cat /tmp/digest.md | python3 scripts/send.py --subject "Daily digest" --markdown --body-file -
 
-# HTML email — render a nicer report; pipe the body in on stdin
-cat /tmp/digest.html | python3 scripts/send.py --subject "Daily digest" --html --body-file -
+# Long body from a file (any format) — more robust than a giant CLI arg
+python3 scripts/send.py --subject "Daily digest" --markdown --body-file /tmp/digest.md
+
+# Pre-built HTML (you own the markup)
+cat /tmp/report.html | python3 scripts/send.py --subject "Report" --html --body-file -
 
 # Override the recipient or add a Cc
 python3 scripts/send.py --to "someone@example.com" --cc "me@example.com" \
@@ -62,8 +81,9 @@ python3 scripts/send.py --to "someone@example.com" --cc "me@example.com" \
 - **Prefer `--body-file` (or stdin) for anything long or with special
   characters** — it avoids shell-quoting pitfalls when the body is large, which
   is the normal case for reports and digests.
-- `--html` sends a `text/html` message; without it the body goes as
-  `text/plain` (most clients auto-linkify bare URLs, so plain text is fine).
+- For anything structured, prefer `--markdown` — you write Markdown and get a
+  styled HTML email with a plain-text fallback. `--html` sends your markup
+  verbatim; with neither flag the body goes as `text/plain`.
 - The transport is **localhost-only** — it speaks SMTP to `127.0.0.1:1025`
   (hydroxide); nothing is exposed off the box.
 - The default recipient comes from the `USER_PRIMARY_EMAIL` secret; set it once
