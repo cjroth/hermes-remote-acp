@@ -15,21 +15,40 @@ ACP client ──wss──► tailscale serve --tcp ──► bridge.js ──st
   (on your tailnet)   (tailnet-only, raw TCP)   (TLS, 127.0.0.1)
 ```
 
-Model: `anthropic/claude-sonnet-4-6` (via OpenRouter) — change it in
+Model: `deepseek/deepseek-v4-flash` (via OpenRouter) — change it in
 `hermes_config.yaml`.
 
-## ⚠️ Run it on a TUN-capable host
+## What's packaged
 
-This needs a host that gives the container a real **kernel TUN device**
+This image bundles Hermes plus everything it needs to run as a personal
+assistant, pre-wired in the `Dockerfile` + `init.sh`. Each integration is
+optional — it only starts when you supply its secret.
+
+| Capability | What's built in | Turned on by |
+|------------|-----------------|--------------|
+| **ACP over WebSocket** | `bridge.js` stdio⇄WSS bridge (terminates TLS) | always on |
+| **Tailscale** | `tailscaled` + cert provisioning + `serve --tcp` (tailnet-only ingress) | `TS_AUTHKEY` |
+| **Proton** (mail · calendar · contacts) | [hydroxide](https://github.com/emersion/hydroxide) bridge on localhost + the `proton` skill | `HYDROXIDE_AUTH_B64` |
+| **Matrix / Beeper** chat | Hermes gateway with E2EE (`mautrix[encryption]`), progressive streaming | `MATRIX_ACCESS_TOKEN` |
+| **Notion** | official `ntn` CLI + the bundled `notion` skill | `NOTION_API_KEY` |
+| **CSP vault sync** | [`ctx`](https://github.com/cjroth/csp) clone-and-watch of `/data/vault` | `CTX_AUTH_KEY` + `CSP_REMOTE` |
+| **Fly.io deploy** | `fly.toml` — region, volume, no public services | — |
+
+See [Configuration](#configuration) for every secret, and the file table under
+[How it works](#how-it-works) for what each source file does.
+
+## Host requirement: a TUN-capable host
+
+It needs a host that gives the container a real **kernel TUN device**
 (`/dev/net/tun` + `NET_ADMIN`) — e.g. a **[Fly.io](https://fly.io) VM** (see
-`fly.toml`) or a VPS. It deliberately refuses to start otherwise.
+`fly.toml`) or a VPS — and won't start otherwise.
 
-Why: on hosts that forbid TUN (many PaaS platforms), Tailscale falls back to
-**userspace networking**, whose software net stack *stalls the TLS handshake* —
-connections take 5–30s and wedge after a couple. Kernel TUN handles inbound in
-the kernel, so connections are ~1s and stable. The bridge also terminates TLS
-itself (rather than `tailscale serve --https`) because serve's TLS path is the
-part that stalls in userspace; raw `serve --tcp` passthrough is fast and stable.
+On hosts that forbid TUN (many PaaS platforms), Tailscale falls back to
+**userspace networking**, whose software net stack stalls the TLS handshake
+(5–30s connects that wedge after a couple). Kernel TUN keeps connects ~1s and
+stable. The bridge also terminates TLS itself (rather than `tailscale serve
+--https`) because serve's TLS path is the part that stalls in userspace; raw
+`serve --tcp` passthrough is fast and stable.
 
 ## Recommended client: Thunderbolt
 
@@ -53,9 +72,11 @@ With the device on the same tailnet:
 |------|---------|
 | `init.sh` | Entrypoint. Starts `tailscaled` (kernel TUN), joins the tailnet, provisions the TLS cert, runs `tailscale serve --tcp=443`, then launches the bridge as the `hermes` user. Replaces the base image's s6 init (which needs PID 1, unavailable on Fly). |
 | `bridge.js` | stdio⇄WebSocket bridge. Terminates TLS with the tailnet cert, binds `127.0.0.1` only, newline-frames stdin for hermes-acp's `readline()` parser. |
-| `hermes_config.yaml` | OpenRouter provider + model. |
-| `Dockerfile` | Builds on `nousresearch/hermes-agent` (ships Node.js + `hermes-acp`); adds `ws`, the Tailscale binaries, and the entrypoint. |
+| `hermes_config.yaml` | OpenRouter provider + model, plus Matrix streaming config. |
+| `skills/proton/` | The `proton` skill — teaches the agent to drive the hydroxide bridge (mail/calendar/contacts) via a stdlib-only helper script. Bundled into the image and refreshed into `/data` on every boot. |
+| `Dockerfile` | Builds on `nousresearch/hermes-agent`; adds `ws`, the Tailscale binaries, hydroxide (Proton bridge), the `ctx` CSP CLI, the `ntn` Notion CLI, the Matrix E2EE deps (`mautrix[encryption]`), the `proton` skill, and the entrypoint. |
 | `fly.toml` | Fly.io deploy: a region near you, a volume for Tailscale state, **no public services** (tailnet-only). |
+| `beeper_login.py` | One-off helper that mints a Matrix access token for a Beeper account (Beeper's email-code → JWT flow). Used to set up the Matrix/Beeper gateway. |
 
 The bridge listens on `127.0.0.1` only, so only `tailscale serve` (running in the
 same container) can reach it — that's the access boundary.
@@ -69,11 +90,85 @@ Container environment variables / secrets:
 | `OPENROUTER_API_KEY` | yes | Inference via OpenRouter |
 | `TS_AUTHKEY` | yes | Tailscale auth key — **non-ephemeral, reusable** (ephemeral nodes can't hold TLS certs) |
 | `TS_HOSTNAME` | no | Tailnet node name (default `hermes`) |
+| `MATRIX_HOMESERVER` | no | Matrix homeserver URL. For Beeper: `https://matrix.beeper.com`. Enables the Matrix gateway (see [Talk to it from Beeper](#talk-to-it-from-beeper-matrix)). |
+| `MATRIX_ACCESS_TOKEN` | no | Matrix access token for the bot account (mint it with `beeper_login.py`). Presence of this auto-starts the gateway. |
+| `MATRIX_DEVICE_ID` | no | Stable device ID paired with the token — keep it constant so the bot's E2EE identity survives restarts. |
+| `MATRIX_ENCRYPTION` | no | `true` to enable E2EE (**required for Beeper** — its rooms are encrypted). |
+| `MATRIX_RECOVERY_KEY` | no | The bot account's Beeper recovery key — lets it cross-sign its own device so other clients share encryption sessions with it. |
+| `MATRIX_ALLOWED_USERS` | no | Comma-separated Matrix user IDs allowed to talk to the bot (e.g. your main `@you:beeper.com`). Lock this down. |
+| `HYDROXIDE_AUTH_B64` | no | base64 of a working hydroxide `auth.json` (mint it once locally with `hydroxide auth`). Presence auto-starts the ProtonMail bridge (IMAP/SMTP/CalDAV/CardDAV on localhost). |
+| `NOTION_API_KEY` | no | Notion integration token — aliased to `NOTION_API_TOKEN` so the `ntn` CLI and the `notion` skill light up. |
 | `CTX_AUTH_KEY` | no | [CSP](https://github.com/cjroth/csp) §10 enrollment secret — an opaque pre-shared bearer key (no fixed format) that enrolls this container into a remote vault and syncs `/data/vault`. Unset ⇒ vault sync is skipped with a logged warning. |
 | `CSP_REMOTE` | no | CSP remote vault URL (`wss://host[:port]`, or `ws://…` if plaintext) to clone/watch. Required alongside `CTX_AUTH_KEY` for sync to start. |
 
 **Persistent volume at `/var/lib/tailscale`:** keeps the node identity + TLS cert
 across restarts (an on-disk state dir is required for certs).
+
+## Talk to it from Beeper (Matrix)
+
+[Beeper](https://www.beeper.com) is a hosted **Matrix** homeserver
+(`matrix.beeper.com`), so Hermes reaches it through its built-in **Matrix
+gateway** — no new protocol code. The gateway runs as a supervised background
+process *alongside* the ACP bridge (see `init.sh`), so **ACP and Beeper work at
+the same time** on the same machine; neither replaces the other.
+
+> Beeper has no password login — auth goes through Beeper's email-code → JWT
+> flow. Hermes authenticates with an **access token** (it calls `/whoami`), so
+> once you mint a token the stock Matrix adapter works against Beeper unchanged.
+
+### 1. Make a dedicated bot account
+
+Sign up a **second Beeper account** with its own email — that's the bot. (Don't
+log the bot in as your main account, or it would see and could reply inside
+*every* bridged chat in your inbox.) From your **main** Beeper account, start a
+chat with the bot account so there's a room to talk in.
+
+### 2. Mint a Matrix access token
+
+Run the helper locally (stdlib-only, no installs) for the **bot** account:
+
+```bash
+python3 beeper_login.py --app hermes-acp-nrt
+# enter the bot's email, then the 6-digit code Beeper emails it
+```
+
+It prints `MATRIX_ACCESS_TOKEN`, `MATRIX_USER_ID`, `MATRIX_DEVICE_ID` and a
+ready-to-paste `fly secrets set` line. Keep the token + device ID together — the
+device ID is tied to the bot's E2EE identity.
+
+### 3. Set the secrets
+
+```bash
+fly secrets set -a hermes-acp-nrt \
+  MATRIX_HOMESERVER=https://matrix.beeper.com \
+  MATRIX_ACCESS_TOKEN=syt_... \
+  MATRIX_DEVICE_ID=ABCDEF... \
+  MATRIX_ENCRYPTION=true \
+  MATRIX_RECOVERY_KEY="EsT... bot account's Beeper recovery key" \
+  MATRIX_ALLOWED_USERS=@your-main-user:beeper.com
+```
+
+`MATRIX_ENCRYPTION=true` is **required** — Beeper rooms are end-to-end
+encrypted. Get `MATRIX_RECOVERY_KEY` from the bot account's **Beeper → Settings →
+Encryption** (it lets the bot cross-sign its device so your client shares
+encryption sessions with it). The crypto store persists on the volume at
+`/data/hermes/platforms/matrix/store`.
+
+### 4. Deploy and chat
+
+```bash
+fly deploy -a hermes-acp-nrt --ha=false
+```
+
+The gateway connects within a few seconds (`fly logs` shows
+`starting messaging gateway (...): matrix`). Message the bot from your main
+account — a DM gets a response to every message (no `@mention` needed).
+
+> **Note on DMs:** a direct chat with the bot is a 2-member room, which Hermes
+> treats as a DM (responds to everything) — exactly what you want for a personal
+> assistant. The known upstream quirk where 2-member *group* rooms are
+> misclassified ([hermes-agent#24114](https://github.com/NousResearch/hermes-agent/issues/24114))
+> doesn't affect this direct-DM flow.
 
 ## Deploy (Fly.io)
 

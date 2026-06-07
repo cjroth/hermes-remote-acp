@@ -94,13 +94,25 @@ echo "[init] kernel TUN mode" >&2
   fi
 ) &
 
-# --- Telegram gateway (optional, runs as hermes user, background) ------------
-# Outbound-only (long-polls Telegram's API), so it's unaffected by the
-# tailnet-only lockdown. Setting TELEGRAM_BOT_TOKEN auto-enables the platform
-# (gateway _apply_env_overrides), so no interactive `gateway setup` is needed.
-# State (telegram offset, sessions) lives in HERMES_HOME=/data/hermes (volume).
-if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
-    echo "[init] starting Telegram gateway (hermes user, supervised)..." >&2
+# --- Matrix (Beeper) gateway (optional, runs as hermes user, background) -------
+# `hermes gateway run` serves the Matrix platform, auto-enabled from
+# MATRIX_ACCESS_TOKEN (gateway _apply_env_overrides) — no interactive
+# `gateway setup` needed. MATRIX_HOMESERVER points at Beeper
+# (https://matrix.beeper.com). Outbound-only, so unaffected by the tailnet-only
+# lockdown. Runs as a supervised BACKGROUND process; the ACP bridge stays the
+# foreground PID below — so ACP and the Matrix gateway coexist and both stay
+# usable. State (sessions, Matrix E2EE crypto store) lives in
+# HERMES_HOME=/data/hermes on the persistent volume.
+if [ -n "${MATRIX_ACCESS_TOKEN:-}" ]; then
+    # E2EE crypto store + device identity must survive restarts, so keep them on
+    # the volume (Hermes' default store path under HERMES_HOME). Pre-create it
+    # owned by hermes since the gateway runs de-privileged; losing this dir means
+    # losing the bot's encryption identity (see matrix.md E2EE notes).
+    mkdir -p /data/hermes/platforms/matrix/store
+    chown -R hermes:hermes /data/hermes/platforms 2>/dev/null || true
+    [ -n "${MATRIX_HOMESERVER:-}" ] || \
+      echo "[init] WARN: MATRIX_ACCESS_TOKEN set but MATRIX_HOMESERVER unset (Beeper = https://matrix.beeper.com)" >&2
+    echo "[init] starting Matrix gateway (hermes user, supervised)..." >&2
     # Supervised respawn loop: the gateway is a plain background process (no s6 /
     # systemd here), so if it ever exits — crash, OOM, or the agent stopping it —
     # nothing would restart it and it'd stay dead until the next machine reboot.
@@ -111,12 +123,12 @@ if [ -n "${TELEGRAM_BOT_TOKEN:-}" ]; then
         HOME=/data/hermes HERMES_HOME=/data/hermes \
           /command/s6-setuidgid hermes /opt/hermes/.venv/bin/hermes gateway run \
           >>/data/hermes/gateway.log 2>&1
-        echo "[init] Telegram gateway exited (code $?); respawning in 5s..." >>/data/hermes/gateway.log
+        echo "[init] Matrix gateway exited (code $?); respawning in 5s..." >>/data/hermes/gateway.log
         sleep 5
       done
     ) &
 else
-    echo "[init] TELEGRAM_BOT_TOKEN unset — Telegram gateway not started" >&2
+    echo "[init] MATRIX_ACCESS_TOKEN unset — Matrix gateway not started" >&2
 fi
 
 # --- CSP context vault sync (optional, runs as hermes user, background) -------

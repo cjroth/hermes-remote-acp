@@ -54,6 +54,42 @@ RUN cd /opt/bridge && npm install ws@8
 RUN npm install -g ntn
 ENV NOTION_KEYRING=0
 
+# --- Matrix gateway E2EE deps (for Beeper / any Matrix homeserver) ------------
+# The base image ships Hermes WITHOUT its `matrix` extra (upstream #25495/#30399),
+# so `mautrix[encryption]` and python-olm are absent. We add the exact extra from
+# Hermes' pyproject so `hermes gateway run` can serve Matrix with E2EE — required
+# because Beeper rooms are end-to-end encrypted.
+#
+# python-olm has no aarch64 wheel, so its bundled libolm is compiled from source:
+# that needs cmake + a C/C++ toolchain (base has gcc; we add cmake + build-essential
+# for make/g++). The compiled `olm` extension links only libc/libstdc++ at runtime,
+# so the build tools are purged afterward to keep the image lean.
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        cmake build-essential; \
+    VIRTUAL_ENV=/opt/hermes/.venv uv pip install --python /opt/hermes/.venv/bin/python \
+        "mautrix[encryption]==0.21.0" \
+        "Markdown==3.10.2" \
+        "aiosqlite==0.22.1" \
+        "asyncpg==0.31.0" \
+        "aiohttp-socks==0.11.0"; \
+    /opt/hermes/.venv/bin/python -c "import olm, mautrix.crypto, aiosqlite, markdown"; \
+    apt-get purge -y cmake build-essential; \
+    apt-get autoremove -y; \
+    rm -rf /var/lib/apt/lists/*
+
+# --- Matrix progressive streaming patch ---------------------------------------
+# run.py hardcodes `_buffer_only = True` for Matrix, so the bot only updates its
+# reply at paragraph/segment boundaries — on short replies that reads as "no
+# streaming". Flip both Matrix call sites to False so it streams progressively
+# via m.replace edits. The cursor is already suppressed (`_effective_cursor = ""`
+# set right above each flag) to avoid the tofu/white-box artifact some Matrix
+# clients render, so smooth streaming stays artifact-free. The assert pins this
+# to exactly the two known Matrix sites: if a base-image bump moves or renames
+# them, the build fails loudly instead of silently reverting to chunked output.
+RUN /opt/hermes/.venv/bin/python -c "p='/opt/hermes/gateway/run.py'; s=open(p).read(); n=s.count('_buffer_only = True'); assert n==2, 'expected 2 Matrix buffer_only sites, found %d — base image changed, re-check patch' % n; open(p,'w').write(s.replace('_buffer_only = True','_buffer_only = False')); print('patched', n, 'Matrix buffer_only sites -> progressive streaming')"
+
 # --- Tailscale (kernel TUN where allowed, userspace fallback) -----------------
 # Pinned for reproducible builds. Arch detected so it builds on amd64 + arm64.
 ARG TAILSCALE_VERSION=1.98.4

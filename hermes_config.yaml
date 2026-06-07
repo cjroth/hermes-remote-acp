@@ -10,11 +10,17 @@ model:
   # $0.20/M output that reserves only ~$0.003.
   max_tokens: 16000
 
-# Telegram response streaming. transport "auto" = prefer Telegram's native
-# draft streaming (sendMessageDraft, Bot API 9.5+) for smooth per-token updates,
-# falling back to progressive editMessageText if unsupported. Applied at gateway
-# startup. (An earlier attempt with transport "edit" coincided with gateway
-# instability; re-enabling here with live log monitoring to catch any crash.)
+# Matrix (Beeper) response streaming. transport "edit" = progressive m.replace
+# edits, the native streaming mode for Matrix (it has no draft API). Combined
+# with the Dockerfile buffer_only patch, the bot's reply grows live in Beeper
+# instead of only updating at paragraph breaks. (The earlier "edit instability"
+# note was a Telegram-era concern; Telegram is gone now, and Matrix is edit-only.)
+#
+# Rate-limit posture for a single encrypted Beeper DM: edit roughly once a second
+# so we stay well under Beeper's per-room event limits. Raise edit_interval /
+# buffer_threshold if you ever see M_LIMIT_EXCEEDED backoff in gateway.log.
 streaming:
   enabled: true
-  transport: auto
+  transport: edit
+  edit_interval: 1.0      # min seconds between edits (~1 edit/s)
+  buffer_threshold: 28    # ...or flush after this many new chars, whichever first
