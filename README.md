@@ -1,4 +1,4 @@
-# Hermes ACP over WebSocket (Tailscale-only)
+# Chris's Opinionated Hermes Agent Stack (c-stack)
 
 Runs the [Hermes agent](https://github.com/NousResearch/hermes-agent) in a
 container and exposes it over the
