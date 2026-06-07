@@ -27,7 +27,7 @@ install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yam
 # skill in the image would never reach /data/hermes/skills after the first
 # deploy. Overwrite from the image (source of truth) so deploys propagate.
 # Each entry is "<category>/<skill>" matching the Dockerfile COPY targets.
-for skill in communication/proton communication/email-me research/lesswrong-digest; do
+for skill in communication/proton communication/email-me research/lesswrong-digest research/hacker-news-digest; do
     src="/opt/hermes/skills/$skill"
     [ -d "$src" ] || continue
     dest_dir="/data/hermes/skills/$(dirname "$skill")"

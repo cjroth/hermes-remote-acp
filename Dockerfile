@@ -48,6 +48,9 @@ COPY skills/email-me /opt/hermes/skills/communication/email-me
 # the operator a summary (delivery delegated to `email-me`).
 COPY skills/lesswrong-digest /opt/hermes/skills/research/lesswrong-digest
 
+# `hacker-news-digest` — same shape as lesswrong-digest over the HN Firebase API.
+COPY skills/hacker-news-digest /opt/hermes/skills/research/hacker-news-digest
+
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace
 # netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws` pkg.
