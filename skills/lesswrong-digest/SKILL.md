@@ -20,6 +20,8 @@ discussion).
 This skill **only builds the digest** — it does not send or deliver it. Output
 the finished digest in the conversation and stop there. Delivery is decoupled:
 if the user wants it emailed, they'll ask, and that's the `email-me` skill's job.
+This mirrors the `hacker-news-digest` skill — same shape, same output format — so
+the two read uniformly when delivered side by side.
 
 Pipeline: `lesswrong.py` (fetch) → you (summarize) → done.
 
