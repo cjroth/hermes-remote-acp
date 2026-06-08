@@ -51,6 +51,12 @@ COPY skills/lesswrong-digest /opt/hermes/skills/research/lesswrong-digest
 # `hacker-news-digest` — same shape as lesswrong-digest over the HN Firebase API.
 COPY skills/hacker-news-digest /opt/hermes/skills/research/hacker-news-digest
 
+# `goals` — sets/refines/remembers the operator's goals across horizons in the
+# vault (/data/vault/goals) and coaches them on alignment; reminds on every run
+# and nudges a re-baseline when the goals go stale. Channel-agnostic; for a
+# no-reply reminder it can delegate delivery to `email-me`.
+COPY skills/goals /opt/hermes/skills/personal/goals
+
 # `self-update` — lets the agent edit its own skills and push them back to the
 # GitHub repo (main), so improvements persist across redeploys and propagate to
 # every machine. Drives the /data/repo working tree set up in init.sh; enabled
