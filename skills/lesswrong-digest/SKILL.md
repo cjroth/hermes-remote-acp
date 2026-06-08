@@ -66,6 +66,17 @@ top-down:
      it grounded and proportionate, and don't manufacture stakes for a minor
      post.
 
+     **Write the Commentary for a smart non-expert.** Aim for a curious,
+     intelligent reader who *isn't* steeped in the technical or insider material
+     — think "explain it to a sharp friend over coffee," a notch above ELI5, not
+     dumbed-down. When a post leans on jargon or a term of art (e.g.
+     "mesa-optimization," "RLHF," "decision theory," a niche in-group reference),
+     name it but unpack it in a few plain words so the point lands without prior
+     background. Favor plain language and concrete stakes ("this matters because…")
+     over insider shorthand. This accessibility rule applies to the **Commentary
+     specifically** — the summary and discussion stay faithful to the source, but
+     even there, briefly glossing a heavy term is welcome when it aids reading.
+
 **Researching the commentary.** The fetched JSON is usually enough, but when a
 post leans on context you don't have — a referenced paper or event, a running
 debate, an author's prior work, a term of art — do a quick web search to ground
