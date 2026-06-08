@@ -1,6 +1,6 @@
 ---
 name: lesswrong-digest
-description: "Build a readable LessWrong digest: fetch the day's top/trending posts plus their top comments and summarize each post and its discussion, opening with an overall summary of the day. Produces the digest only — delivery (email, etc.) is a separate step the user requests. Use when asked for a LessWrong digest/roundup."
+description: "Build a readable LessWrong digest: fetch the day's top/trending posts plus their top comments, summarize each post and its discussion, and add a short commentary on why each post matters in the current climate, opening with an overall summary of the day. Produces the digest only — delivery (email, etc.) is a separate step the user requests. Use when asked for a LessWrong digest/roundup."
 version: 1.0.0
 author: community
 license: MIT
@@ -14,8 +14,9 @@ metadata:
 
 Produce a single, readable digest of the day on **LessWrong**: the most notable
 recent posts and what people are saying in the comments. It opens with a short
-**overall summary of the day**, then gives a **per-post summary** (post + its
-discussion).
+**overall summary of the day**, then for each post gives a **per-post summary**
+(post + its discussion) followed by a short **commentary** placing the post in
+the current climate — why it matters now.
 
 This skill **only builds the digest** — it does not send or deliver it. Output
 the finished digest in the conversation and stop there. Delivery is decoupled:
@@ -23,7 +24,8 @@ if the user wants it emailed, they'll ask, and that's the `email-me` skill's job
 This mirrors the `hacker-news-digest` skill — same shape, same output format — so
 the two read uniformly when delivered side by side.
 
-Pipeline: `lesswrong.py` (fetch) → you (summarize) → done.
+Pipeline: `lesswrong.py` (fetch) → you (summarize + commentary, with optional
+web research for context) → done.
 
 ## 1. Fetch the material
 
@@ -56,10 +58,27 @@ top-down:
    - 2–4 sentences summarizing the **post** itself.
    - 1–3 sentences on the **discussion** — the main threads, agreements,
      pushback, or notable points from `top_comments`. Skip if there are none.
+   - A short **Commentary** (1–3 sentences), clearly labeled, on the post's
+     **significance in the current climate**: why it's landing now, how it
+     connects to ongoing debates (AI safety/policy, the rationalist community,
+     recent events, related research), and what makes it worth attention. This
+     is the one place you're allowed to interpret rather than just report — keep
+     it grounded and proportionate, and don't manufacture stakes for a minor
+     post.
 
-Guidance: be concrete and neutral; summarize arguments, don't editorialize.
-Attribute notable comment points to their author when it helps. If a post body
-is truncated (`[…]`), summarize what's present and lean on the title/comments.
+**Researching the commentary.** The fetched JSON is usually enough, but when a
+post leans on context you don't have — a referenced paper or event, a running
+debate, an author's prior work, a term of art — do a quick web search to ground
+the commentary (use the `WebSearch`/`WebFetch` tools). Keep it light: one or two
+lookups per post at most, only when it genuinely sharpens the "why it matters."
+Don't let research stall the digest; if a lookup is inconclusive, write the
+commentary from what the post and comments already give you.
+
+Guidance: be concrete and neutral in the **summary** and **discussion**;
+summarize arguments, don't editorialize. Save interpretation for the labeled
+**Commentary**. Attribute notable comment points to their author when it helps.
+If a post body is truncated (`[…]`), summarize what's present and lean on the
+title/comments.
 
 That's the whole job — present the digest and stop. Don't email it unless the
 user asks; if they do, hand the finished digest to the `email-me` skill.
