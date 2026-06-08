@@ -22,18 +22,64 @@ chown hermes:hermes /data/hermes 2>/dev/null || true
 install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yaml 2>/dev/null || \
     cp /opt/seed/config.yaml /data/hermes/config.yaml
 
+# --- Self-update: source repo working tree ------------------------------------
+# When GITHUB_TOKEN is set, keep a git clone of the source repo at /data/repo
+# (on the persistent volume). It's the working tree the `self-update` skill
+# commits from, AND the source for the skill refresh below — so a skill change
+# pushed to main goes live on any machine's next boot WITHOUT an image rebuild
+# (just `fly deploy` / `fly apps restart`). Unset ⇒ skills come from the image
+# as before. The token is NOT written to .git/config: init-time fetch/clone use
+# a transient in-memory URL, and the agent's own pushes read GITHUB_TOKEN from
+# the env via a credential helper.
+REPO_DIR=/data/repo
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    if command -v git >/dev/null 2>&1; then
+        GITHUB_REPO="${GITHUB_REPO:-cjroth/c-stack}"
+        PLAIN_URL="https://github.com/${GITHUB_REPO}.git"
+        AUTH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
+        export GITHUB_TOKEN  # so the agent's later `git push` can authenticate
+        if [ -d "$REPO_DIR/.git" ]; then
+            su hermes -c "cd '$REPO_DIR' && git fetch --quiet '$AUTH_URL' main && git reset --hard --quiet FETCH_HEAD" \
+                >>/data/repo.log 2>&1 || echo "[init] WARN: repo pull failed (see /data/repo.log)" >&2
+        else
+            chown hermes:hermes "$(dirname "$REPO_DIR")" 2>/dev/null || true
+            su hermes -c "git clone --quiet '$AUTH_URL' '$REPO_DIR'" \
+                >>/data/repo.log 2>&1 || echo "[init] WARN: repo clone failed (see /data/repo.log)" >&2
+        fi
+        if [ -d "$REPO_DIR/.git" ]; then
+            # Strip the token from origin, set commit identity + a credential
+            # helper that reads GITHUB_TOKEN from the env at push time.
+            su hermes -c "git -C '$REPO_DIR' remote set-url origin '$PLAIN_URL'; \
+                git -C '$REPO_DIR' config user.name '${GIT_USER_NAME:-hermes-agent}'; \
+                git -C '$REPO_DIR' config user.email '${GIT_USER_EMAIL:-${USER_PRIMARY_EMAIL:-hermes@localhost}}'; \
+                git -C '$REPO_DIR' config credential.helper '!f() { echo username=x-access-token; echo password=\$GITHUB_TOKEN; }; f'" \
+                >>/data/repo.log 2>&1 || true
+        fi
+    else
+        echo "[init] WARN: GITHUB_TOKEN set but git not installed; self-update disabled" >&2
+    fi
+fi
+
 # Refresh the bundled skills into the writable skills dir on every boot. The
 # skill loader seeds bundled skills only when ABSENT, so without this an updated
-# skill in the image would never reach /data/hermes/skills after the first
-# deploy. Overwrite from the image (source of truth) so deploys propagate.
-# Each entry is "<category>/<skill>" matching the Dockerfile COPY targets.
-for skill in communication/proton communication/email-me research/lesswrong-digest research/hacker-news-digest; do
-    src="/opt/hermes/skills/$skill"
+# skill would never reach /data/hermes/skills after the first deploy. Prefer the
+# /data/repo working tree (so pushed skill edits propagate on restart); fall
+# back to the image-baked copy when the clone is absent. Either way the live
+# copy is overwritten, so the source (repo > image) stays authoritative.
+# Each entry is "<category>/<skill>"; the basename matches the flat repo path.
+for skill in communication/proton communication/email-me research/lesswrong-digest research/hacker-news-digest system/self-update; do
+    name="$(basename "$skill")"
+    if [ -d "$REPO_DIR/skills/$name" ]; then
+        src="$REPO_DIR/skills/$name"
+    else
+        src="/opt/hermes/skills/$skill"
+    fi
     [ -d "$src" ] || continue
     dest_dir="/data/hermes/skills/$(dirname "$skill")"
     mkdir -p "$dest_dir"
+    rm -rf "$dest_dir/$name"
     cp -rf "$src" "$dest_dir/"
-    chown -R hermes:hermes "$dest_dir/$(basename "$skill")" 2>/dev/null || true
+    chown -R hermes:hermes "$dest_dir/$name" 2>/dev/null || true
 done
 
 # Notion: the `ntn` CLI and the bundled `notion` skill read NOTION_API_TOKEN;

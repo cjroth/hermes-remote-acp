@@ -68,9 +68,53 @@ Container environment variables / secrets:
 | `NOTION_API_KEY` | no | Notion integration token — aliased to `NOTION_API_TOKEN` so the `ntn` CLI and the `notion` skill light up. |
 | `CTX_AUTH_KEY` | no | [CSP](https://github.com/cjroth/csp) §10 enrollment secret — an opaque pre-shared bearer key (no fixed format) that enrolls this container into a remote vault and syncs `/data/vault`. Unset ⇒ vault sync is skipped with a logged warning. |
 | `CSP_REMOTE` | no | CSP remote vault URL (`wss://host[:port]`, or `ws://…` if plaintext) to clone/watch. Required alongside `CTX_AUTH_KEY` for sync to start. |
+| `GITHUB_TOKEN` | no | Fine-grained GitHub PAT (Contents: read/write on the source repo). Presence enables **self-update**: init.sh clones the repo to `/data/repo` and the `self-update` skill can push skill edits back to `main`. See [Self-update](#self-update-let-the-agent-improve-its-own-skills). |
+| `GITHUB_REPO` | no | `owner/repo` to clone for self-update (default `cjroth/c-stack`). **Forks must set this** to their own `owner/c-stack`. |
+| `GIT_USER_NAME` | no | Commit author name for self-update pushes (default `hermes-agent`). |
+| `GIT_USER_EMAIL` | no | Commit author email (default `USER_PRIMARY_EMAIL`, else `hermes@localhost`). |
 
 **Persistent volume at `/var/lib/tailscale`:** keeps the node identity + TLS cert
 across restarts (an on-disk state dir is required for certs).
+
+## Self-update: let the agent improve its own skills
+
+With `GITHUB_TOKEN` set, the agent can edit its **own skills** and push the
+changes back to GitHub, so improvements persist instead of being lost on the
+next reboot.
+
+**Why it's needed:** the live skills dir (`/data/hermes/skills/...`) is
+regenerated on every boot, so an in-place edit there is wiped on restart. The
+only durable path is pushing back to the source repo.
+
+**How it works:**
+
+- `init.sh` clones the repo (`GITHUB_REPO`) to `/data/repo` on the persistent
+  volume, and `git fetch`/`reset --hard origin/main` on every boot.
+- The skill refresh then sources skills from `/data/repo` (falling back to the
+  image when the clone is absent). So a skill change pushed to `main` goes live
+  on **any** machine's next boot — `fly deploy` or `fly apps restart`, **no
+  image rebuild required**.
+- The `self-update` skill drives the loop: edit under `/data/repo/skills/<name>`,
+  then `scripts/push-skill.sh "<message>" <name>` commits + pushes to `main` and
+  refreshes the live copy so it's active in the current session.
+
+**Pushes go straight to `main`** (no review gate before the push); the human
+review happens at deploy time, since a push alone doesn't restart anything. The
+helper stages **only paths under `skills/`**, so the agent can't commit
+`Dockerfile`/`init.sh`/other core files through it — even though a repo-scoped
+token technically could. Token handling: the PAT is never written to
+`/data/repo/.git/config`; pushes read it from the env via a git credential
+helper.
+
+**Token scope:** create a *fine-grained* PAT limited to the single repo with
+**Contents: read and write** (add **Pull requests: read and write** only if you
+later switch to a PR-based flow). Set it as a Fly secret:
+
+```sh
+fly secrets set GITHUB_TOKEN=github_pat_xxx
+# forks also:
+fly secrets set GITHUB_REPO=youruser/c-stack
+```
 
 ## Connecting a client: Thunderbolt
 

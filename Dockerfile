@@ -51,6 +51,20 @@ COPY skills/lesswrong-digest /opt/hermes/skills/research/lesswrong-digest
 # `hacker-news-digest` — same shape as lesswrong-digest over the HN Firebase API.
 COPY skills/hacker-news-digest /opt/hermes/skills/research/hacker-news-digest
 
+# `self-update` — lets the agent edit its own skills and push them back to the
+# GitHub repo (main), so improvements persist across redeploys and propagate to
+# every machine. Drives the /data/repo working tree set up in init.sh; enabled
+# only when GITHUB_TOKEN is supplied.
+COPY skills/self-update /opt/hermes/skills/system/self-update
+
+# git + CA certs — init.sh clones/pulls the source repo so the `self-update`
+# skill can push skill edits back to GitHub over HTTPS. Kept in the final image
+# (unlike the build-only toolchains purged above).
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates; \
+    rm -rf /var/lib/apt/lists/*
+
 # Custom stdio<->WebSocket bridge (bridge.js). It terminates TLS itself (using
 # the Tailscale cert) because `tailscale serve --https` wedges in userspace
 # netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws` pkg.
