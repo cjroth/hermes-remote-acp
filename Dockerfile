@@ -57,6 +57,12 @@ COPY skills/hacker-news-digest /opt/hermes/skills/research/hacker-news-digest
 # no-reply reminder it can delegate delivery to `email-me`.
 COPY skills/goals /opt/hermes/skills/personal/goals
 
+# `prospector` — maintains a ranked relationship graph in the vault (people/) of
+# who to reach out to in service of the operator's goals, and for each pick
+# drafts the message + medium + move (cold/warm-intro/nurture/reactivate). Reads
+# goals/ + careerbot's companies/roles for context. Drafts only, never sends.
+COPY skills/prospector /opt/hermes/skills/personal/prospector
+
 # `self-update` — lets the agent edit its own skills and push them back to the
 # GitHub repo (main), so improvements persist across redeploys and propagate to
 # every machine. Drives the /data/repo working tree set up in init.sh; enabled
