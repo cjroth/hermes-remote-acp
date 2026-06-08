@@ -63,6 +63,13 @@ COPY skills/goals /opt/hermes/skills/personal/goals
 # goals/ + careerbot's companies/roles for context. Drafts only, never sends.
 COPY skills/prospector /opt/hermes/skills/personal/prospector
 
+# `event-prospector` — sibling of prospector for events (conferences, meetups,
+# demo days, dinners): ranks an events/ folder in the vault by who'll be there
+# (overlap with the people/ graph + target companies), goal-fit, cost/travel, and
+# follow-up potential, then plans the top picks. Reads location/budget from the
+# operator's memory — never hard-codes a city. Plans/drafts only, never registers.
+COPY skills/event-prospector /opt/hermes/skills/personal/event-prospector
+
 # `self-update` — lets the agent edit its own skills and push them back to the
 # GitHub repo (main), so improvements persist across redeploys and propagate to
 # every machine. Drives the /data/repo working tree set up in init.sh; enabled

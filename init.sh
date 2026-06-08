@@ -67,7 +67,7 @@ fi
 # back to the image-baked copy when the clone is absent. Either way the live
 # copy is overwritten, so the source (repo > image) stays authoritative.
 # Each entry is "<category>/<skill>"; the basename matches the flat repo path.
-for skill in communication/proton communication/email-me research/lesswrong-digest research/hacker-news-digest personal/goals personal/prospector system/self-update; do
+for skill in communication/proton communication/email-me research/lesswrong-digest research/hacker-news-digest personal/goals personal/prospector personal/event-prospector system/self-update; do
     name="$(basename "$skill")"
     if [ -d "$REPO_DIR/skills/$name" ]; then
         src="$REPO_DIR/skills/$name"
