@@ -36,6 +36,31 @@ give before you ask; play a 1–3 move game, not a single jump.
   them aggressively (the `reactivate` mode). Reactivate giver-style: open with
   an offer or a genuine "you came to mind because…", not a cold ask.
 
+## Status gap (reach relative to your standing)
+
+Reachability isn't only "is there a warm path" — it's also "would this person
+plausibly answer *someone of my standing*?" Judge each target's prominence
+relative to the operator's **current** standing (today: an early-stage individual
+builder, pre-raise):
+
+- A peer founder, an engineer at a target company, a mid-level operator → fair
+  game for a well-crafted cold reach.
+- A `prominent` figure (well-known operator/founder) or `elite` (a-list VC,
+  billion-dollar-company CEO) gets *hundreds* of cold pitches — a vague "would
+  love to connect" is noise to them. Recommend reaching them only when **either**:
+  - a **warm path** exists (or can be built — route through a reachable
+    intermediary as a sub-goal, the structural-holes move), **or**
+  - there's a **specific, mutually-valuable ask** that earns the reach: a concrete,
+    hard-to-ignore reason (e.g. "would you angel-invest in my seed round?", a
+    genuinely novel collaboration, a sharp question only they can answer).
+
+  Absent both, don't surface them yet — nurture toward a path, or park them until
+  the operator's traction/standing closes the gap. As the operator's standing
+  grows, the same people become more reachable: lower their relative prominence
+  rather than pretending the gap was never there. (`rank-people.py` already
+  penalizes cold high-prominence targets and waives most of it for warm paths /
+  specific asks — keep the frontmatter `prominence` and `specific_ask` honest.)
+
 ## Mode router (decide the play first)
 
 Classify each target from `(reachability, relationship strength, value)`:

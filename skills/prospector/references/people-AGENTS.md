@@ -32,6 +32,8 @@ location: "San Francisco"
 primary_channel: linkedin   # email|linkedin|x|... (where they're actually receptive)
 has_warm_path: true         # a 1–2 hop intro path exists (slugs/details in the body)
 super_connector: false      # bridges clusters the user can't otherwise reach
+prominence: prominent       # peer|notable|prominent|elite — their stature/reach vs. the operator
+specific_ask: false         # a concrete, mutually-valuable reason that earns a big-status reach
 last_touch: 2026-05-01      # empty/absent = never contacted
 cadence_days: 30            # tier reconnect rhythm
 trigger: "Raised Series A for dev-tools fund"   # an active reason to reach now (empty if none)

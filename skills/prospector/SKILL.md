@@ -78,10 +78,25 @@ Expand and update the graph. Two sources:
 **ICP gate:** before creating a file, ask *does reaching this person plausibly
 advance a goal?* If not, skip them. Don't pad the graph.
 
+**Build to at least 100.** Keep discovering until **≥100 people remain after the
+ICP gate** (across all categories and statuses combined). One pass rarely gets
+there — loop: widen categories (cofounders, investors, customers, connectors,
+mentors, recruiters, operators, peers), work down the ~80 tracked companies for
+people at each, mine new search angles (conference speakers, podcast guests,
+authors of relevant work, portfolio lists, GitHub collaborators, mutuals of
+people already in the graph), and pull in vault-implied people. The 100 is a
+floor on *quality* prospects, not a license to pad — never add someone who fails
+the ICP gate just to hit the number. If you genuinely exhaust plausible
+candidates before 100, stop and say how many you reached and why.
+
 For each person, write `people/<status>/<slug>.md` with the frontmatter from
 `people/AGENTS.md` (category, relationship_strength, channels, `has_warm_path`,
-`super_connector`, `last_touch`, `cadence_days`, `trigger`/`trigger_date`,
-`gives`/`asks`, `goal_served`). New cold finds go in `prospects/`. Put intro-path
+`super_connector`, `prominence`, `specific_ask`, `last_touch`, `cadence_days`,
+`trigger`/`trigger_date`, `gives`/`asks`, `goal_served`). Set `prominence`
+honestly relative to the operator's *current* standing (an early-stage individual
+builder, pre-raise): a peer founder is `peer`; a well-known operator is
+`prominent`; an a-list VC or billion-dollar-company CEO is `elite`. New cold finds
+go in `prospects/`. Put intro-path
 slugs, channel handles, history, and your reasoning in the **body**. Keep
 frontmatter scalars accurate — the ranking script reads them.
 
@@ -119,6 +134,18 @@ and produce, for each person:
   script's `Mode`, then sanity-check it). For warm intros, lay out the path and
   the double-opt-in plan; for cold high-value targets, the undeniable hook; for
   nurture/reactivate, the give to lead with.
+- **Respect the status gap.** Reach relative to the operator's standing. Don't
+  recommend cold-reaching a `prominent`/`elite` target (a-list VC, billion-dollar-
+  company CEO) on a vague "let's connect" — they're drowning in inbound and won't
+  bite. Such a reach is only worth recommending when **either** a warm path
+  exists (find or build one — route through a reachable intermediary as a sub-
+  goal) **or** there's a `specific_ask`: a concrete, mutually-valuable, hard-to-
+  ignore reason (e.g. "would you angel-invest in my seed round?", a genuinely
+  novel collaboration, a sharp question only they can answer). Absent both, don't
+  surface them as an outreach target yet — note the intermediary to nurture toward
+  instead, or park them until the operator has the traction/standing to earn the
+  reach. The ranking already penalizes cold high-prominence targets; honor that in
+  the narrative.
 - **Medium** — the channel from the playbook lookup, chosen for where *they're*
   receptive (with the X "engage-before-DM" rule, the LinkedIn-DM default, or the
   intro protocol as applicable).

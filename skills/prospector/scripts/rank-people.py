@@ -18,9 +18,21 @@ references/playbook.md):
       + 1.0 * relationship       # tier: stranger < friendly < strong < advocate
       + 2.0 * trigger            # active trigger event, recency-decayed (reach *now*)
       + 1.5 * dormant_bonus      # high past-closeness gone quiet = highest-ROI reconnection
+      - 2.0 * status_gap         # prominence above the operator → implausible to reach cold
       - 2.0 * recent_contact     # touched within cadence → don't pester
       - 1.0 * give_ask_imbalance # asked >> gave → relational, not transactional
       + priority_override        # agent's manual thumb on the scale
+
+The status_gap penalty encodes the operator's position relative to the target.
+A billion-dollar-company CEO won't answer a cold note from an individual builder
+no matter how good the message — so prominent/elite targets get heavily penalized
+*when the reach is cold*. The penalty is mostly waived when a warm path or an
+existing relationship bridges the gap, and softened when there's a `specific_ask`
+(a concrete, mutually-valuable reason that earns the reach — e.g. "would you
+angel-invest in my seed round?"). The operator's own standing is the reference
+point: today an early-stage individual builder, so the gap is real; as their
+standing grows (traction, a raise, a known company), lower the targets' relative
+prominence rather than the penalty.
 
 Every subscore is 0–100 before weighting. The script gives a stable ordering;
 the agent layers the actual strategy (mode, path, message) on top.
@@ -34,6 +46,8 @@ Frontmatter fields the script reads (everything else lives in the body):
     trigger_date           YYYY-MM-DD
     has_warm_path          true|false            (a 1–2 hop intro path exists; details in body)
     super_connector        true|false            (bridges clusters the user lacks access to)
+    prominence             peer|notable|prominent|elite   (their reach/stature vs. the operator)
+    specific_ask           true|false            (a concrete, mutually-valuable reason that earns a big reach)
     primary_channel        email|linkedin|x|...  (display only)
     gives / asks           int                   (give-first ledger)
     goal_served            free text             (display: which goal/target this advances)
@@ -72,6 +86,10 @@ CATEGORY_WEIGHT = {
 }
 
 STRENGTH_POINTS = {"stranger": 0, "friendly": 40, "strong": 70, "advocate": 100}
+# Target's stature/reach relative to the operator. Drives the cold-reach status
+# penalty: the higher the gap, the less plausible a cold note is. peer = same
+# rough standing; elite = a-list founder/VC/CEO drowning in inbound.
+PROMINENCE_POINTS = {"peer": 0, "notable": 33, "prominent": 67, "elite": 100}
 RELATIONSHIP_STATUSES = {"nurturing", "in-conversation"}
 DEFAULT_CADENCE = 30
 DORMANT_SILENCE_DAYS = 180  # strong/advocate tie silent this long = reactivation play
@@ -183,6 +201,16 @@ def score_person(fm, status, today):
     total = sum(sub[k] * weights[k] for k in sub)
 
     # Penalties.
+    # Status gap: prominent/elite targets are implausible to reach *cold*. A warm
+    # path or existing relationship bridges the gap (penalty mostly waived); a
+    # specific, mutually-valuable ask softens it (earns the reach).
+    status_gap = PROMINENCE_POINTS.get((fm.get("prominence") or "peer").lower(), 0)
+    if has_relationship or has_warm:
+        status_gap *= 0.2
+    elif as_bool(fm.get("specific_ask")):
+        status_gap *= 0.4
+    total -= 2.0 * status_gap
+
     if days_since is not None and days_since < cadence:
         total -= 2.0 * round(100 * (cadence - days_since) / cadence)  # touched recently → ease off
     asks, gives = as_int(fm.get("asks")), as_int(fm.get("gives"))
