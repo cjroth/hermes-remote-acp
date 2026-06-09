@@ -28,7 +28,15 @@ heuristic that the hallway (who you meet) beats the main stage:
       + 1.5 * cost_efficiency      # value vs. TrueCost (travel + time); virtual is cheap
       + 1.0 * learning_value
       − hard-constraint penalties (calendar conflict, over budget, far-for-thin, <30% relevant)
+      + co_location_bonus          # +30 per co-located event (same city, ±4 wks) — trip amortization
       + priority_override
+
+The `total` is the event's STRATEGIC VALUE; ACCESSIBILITY (local|regional|far|
+virtual) is reported as a separate dimension (the Travel column) so a high-value
+event that happens to need a flight reads as exactly that — not as "skip" and
+not as the same ✅ as a local must-go. The verdict is travel-aware: a far event
+that clears the attend bar is labelled "✈️ attend (travel)", distinguishing
+"worth the trip" from a local "✅ attend".
 
 Frontmatter the script reads (everything else lives in the body):
     date / end_date        YYYY-MM-DD
@@ -181,21 +189,53 @@ def score_event(fm, status, today):
         total -= 500
         flags.append("date passed")
 
-    if passed or total < 400:
-        verdict = "⏭ skip"
-    elif total >= 700:
-        verdict = "✅ attend"
-    else:
-        verdict = "🤔 evaluate"
-
+    # Verdict is derived in main() AFTER the co-location bonus is applied, so a
+    # bundle-able event isn't judged on its pre-bundle score.
     return {
-        "total": round(total, 1), "sub": sub, "verdict": verdict, "flags": flags,
+        "total": round(total, 1), "sub": sub, "passed": passed, "flags": flags,
         "format": fmt, "travel": travel or "—", "is_virtual": is_virtual,
         "location": fm.get("location") or "—", "density": density,
         "est_cost": as_int(fm.get("est_cost_usd")),
         "goal_served": fm.get("goal_served") or "—",
-        "date": event_date,
+        "date": event_date, "co_located": 0,
     }
+
+
+def derive_verdict(total, passed, travel):
+    """Strategic-value → verdict, but travel-aware so far events read distinctly.
+
+    A far event clearing the attend bar is "worth the trip", not the same call as
+    a local must-go — surface that rather than stamping ✅ on everything ≥700.
+    """
+    if passed or total < 400:
+        return "⏭ skip"
+    if total >= 700:
+        return "✈️ attend (travel)" if travel == "far" else "✅ attend"
+    return "🤔 evaluate"
+
+
+CO_LOCATION_WINDOW_DAYS = 28  # ±4 weeks counts as one bundle-able trip
+CO_LOCATION_BONUS = 30        # per co-located event, when ≥2 neighbors co-locate
+
+
+def apply_co_location_bonus(rows):
+    """Reward trips you can amortize: for each in-person event, count OTHER
+    in-person events in the same city within ±4 weeks. With ≥2 co-located
+    neighbors, add +30 each — surfacing "hit 3 things on one trip" as a ranking
+    signal, not just narrative commentary. Mutates rows in place."""
+    for r in rows:
+        city = (r["location"] or "").strip().lower()
+        if r["is_virtual"] or not r["date"] or not city or city == "—":
+            continue
+        n = sum(
+            1 for o in rows
+            if o is not r and not o["is_virtual"] and o["date"]
+            and (o["location"] or "").strip().lower() == city
+            and abs((o["date"] - r["date"]).days) <= CO_LOCATION_WINDOW_DAYS
+        )
+        r["co_located"] = n
+        if n >= 2:
+            r["total"] = round(r["total"] + CO_LOCATION_BONUS * n, 1)
 
 
 def when_cell(d, today):
@@ -242,6 +282,12 @@ def main():
         print("No events found to rank.")
         sys.exit(0)
 
+    # Bundle-able trips get a co-location bonus before the verdict is judged…
+    apply_co_location_bonus(rows)
+    # …then derive each verdict against the final (post-bundle) strategic value.
+    for r in rows:
+        r["verdict"] = derive_verdict(r["total"], r["passed"], r["travel"])
+
     rows.sort(key=lambda r: r["total"], reverse=True)
 
     out = []
@@ -255,15 +301,20 @@ def main():
         goal = goal[:22] + "…" if len(goal) > 23 else goal
         cost = f"${r['est_cost']:,}" if r["est_cost"] else "—"
         flagnote = f" ⚠️ {', '.join(r['flags'])}" if r["flags"] else ""
+        bundlenote = f" 🧳×{r['co_located']} bundle" if r.get("co_located", 0) >= 2 else ""
         out.append(
-            f"| {medal}{i} | {r['name']}{flagnote} | {when_cell(r['date'], today)} | {r['location']} | "
+            f"| {medal}{i} | {r['name']}{flagnote}{bundlenote} | {when_cell(r['date'], today)} | {r['location']} | "
             f"{r['format']} | {r['travel']} | {cost} | {r['density']} | {r['verdict']} | {goal} | **{r['total']}** |"
         )
     out.append("")
-    out.append("_Verdict_: ✅ attend (≥700) · 🤔 evaluate (400–699) · ⏭ skip (<700). _Targets_ = "
-               "people from the relationship graph / target companies expected to attend (the who's-going "
-               "density — the hallway beats the main stage). ⚠️ flags are hard-constraint hits "
-               "(calendar conflict, over budget, far travel for a thin room, <30% relevant, date passed).")
+    out.append("_Verdict_: ✅ attend (≥700, local/regional) · ✈️ attend (travel) (≥700 but `far` — "
+               "worth the trip, not a local must-go) · 🤔 evaluate (400–699) · ⏭ skip (<400 or passed). "
+               "_Score_ = strategic value; _Travel_ = accessibility (local/regional/far/virtual) — read "
+               "them as two separate dimensions. _Targets_ = people from the relationship graph / target "
+               "companies expected to attend (the who's-going density — the hallway beats the main stage). "
+               "🧳×N = N other tracked events co-locate in the same city within ±4 weeks (bundle the trip). "
+               "⚠️ flags are hard-constraint hits (calendar conflict, over budget, far travel for a thin "
+               "room, <30% relevant, date passed).")
     output = "\n".join(out)
 
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)

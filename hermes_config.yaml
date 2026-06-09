@@ -11,6 +11,23 @@ model:
   # $0.87/M output that reserves only ~$0.014.
   max_tokens: 16000
 
+# Web search tool (Firecrawl-backed). Hermes ships a first-class `web` search
+# tool; without this block it stays unconfigured and the agent falls back to
+# shelling out `curl` against DuckDuckGo/Brave HTML — which gets captcha'd and
+# consent-gated on the VM (the failure mode that broke event-prospector's
+# discovery pass). Enabling it here gives every search-using skill (prospector,
+# event-prospector, lesswrong-digest) a real, scriptable search primitive.
+#
+# use_gateway: false → bring-your-own key: Hermes reads FIRECRAWL_API_KEY from
+# the environment. Set it as a Fly secret (free Firecrawl tier covers periodic
+# discovery at this volume):
+#   fly secrets set FIRECRAWL_API_KEY=fc-...   (get one at firecrawl.dev)
+# Flip to use_gateway: true to route through a paid Nous Portal subscription
+# instead (one bill also covers image-gen / browser / TTS) — no key needed then.
+web:
+  backend: firecrawl
+  use_gateway: false
+
 # Matrix (Beeper) response streaming. transport "edit" = progressive m.replace
 # edits, the native streaming mode for Matrix (it has no draft API). Combined
 # with the Dockerfile buffer_only patch, the bot's reply grows live in Beeper

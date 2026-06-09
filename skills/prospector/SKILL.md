@@ -70,9 +70,13 @@ Expand and update the graph. Two sources:
    potential cofounders, investors whose thesis fits (AI dev-tools / agent infra /
    the operator's product thesis), early-customer/design-partner candidates,
    recruiters/hiring managers at target companies, and **super-connectors** who
-   bridge into clusters the operator can't currently reach. Use web research
-   (WebSearch/WebFetch) to find them and their **triggers** (recent funding, a
-   launch, a job change, a post worth engaging). Honor the **avoid list** in
+   bridge into clusters the operator can't currently reach. Use the runtime's
+   **web search tool** to find them and their **triggers** (recent funding, a
+   launch, a job change, a post worth engaging) — Hermes' built-in `web` tool
+   (Firecrawl) on the deployed agent, or `WebSearch`/`WebFetch` on a Claude
+   runtime. **Don't shell out to `curl` against a search engine's HTML** (it gets
+   captcha'd); if no web search tool is available, fall back to knowledge-based
+   discovery from the goals + target companies. Honor the **avoid list** in
    careerbot's profile — don't prospect people at companies the operator avoids.
 
 **ICP gate:** before creating a file, ask *does reaching this person plausibly

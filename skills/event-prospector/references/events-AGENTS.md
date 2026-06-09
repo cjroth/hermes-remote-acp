@@ -45,6 +45,8 @@ uniqueness: high               # low | med | high — one-time co-location vs. m
 has_side_dinners: true         # curated dinners / strong side events attached or nearby
 goal_served: "5y founder — investor + customer access"
 priority_override: 0           # added to the score; pin (+) or bury (−)
+unverified: false              # true ⇒ sourced from model knowledge, not live search —
+                               # dates/venue need confirming (report flags it). Optional.
 url: "https://…"
 organizer: "…"
 ```

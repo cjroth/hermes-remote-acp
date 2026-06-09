@@ -68,10 +68,23 @@ to near-zero). Route by goal: **in-person for networking/conversion; virtual is
 fine for learning/scouting.** The script already collapses `who_density` and
 `follow_up_potential` for virtual events.
 
+## How to run a search (tooling)
+
+Use the runtime's **web search tool** — Hermes' built-in `web` tool (Firecrawl-
+backed) on the deployed agent, or `WebSearch`/`WebFetch` on a Claude runtime.
+**Never shell out to `curl` against DuckDuckGo/Brave HTML** as a search engine:
+it gets captcha'd and consent-gated and was the original cause of empty
+discovery passes. `WebFetch`/Firecrawl scrape is fine for pulling a *specific*
+known page (a Luma event, a demo-day page) into structured data.
+
 ## Discovery sources (tiered; query each by topic + geo + date + format)
 
 - **Luma (lu.ma)** — default for AI/tech/startup meetups, demo days, curated
-  dinners, side events (discover / city / topic pages).
+  dinners, side events (discover / city / topic pages). Prefer Luma's
+  **JSON/API endpoints** for city/topic discovery over scraping the HTML
+  `discover` page — the HTML page **auto-geolocates to the server's IP** (e.g. it
+  returned Tokyo results from a cloud VM), so always pass the **memory-resolved
+  city explicitly** rather than trusting the default geolocation.
 - **Confs.tech** — free JSON API; curated dev conferences + open CFPs, filterable
   by topic.
 - **dev.events / developers.events**, **10times.com** — broad conference
@@ -87,6 +100,36 @@ fine for learning/scouting.** The script already collapses `who_density` and
 
 Normalize everything into one record: `{title, date, location, format, url,
 topics, organizer, speakers[], attendees[], price, source}`.
+
+## Fallback discovery mode (when web search is down)
+
+Discovery must never return an empty list just because search failed. Degrade
+gracefully:
+
+1. **Fast path — live search.** Run the web search tool against the tiered
+   sources above. Keep individual lookups short; don't let one stall the pass.
+2. **If search is unavailable or 2+ queries come back empty** (tool not
+   configured, rate-limited, captcha'd HTML, geolocation noise) → **pivot to
+   knowledge-based discovery.** The model has a reasonable working knowledge of
+   the major conference calendar (NeurIPS, ICML, AI Engineer Summit, ICLR,
+   Strange Loop, RustConf, All Things Open, YC Demo Day, accelerator demo days,
+   the main AI-safety convenings, etc.). Cross-reference that against the
+   operator's **goals + target companies** to seed a well-curated baseline set.
+   **This is explicitly acceptable** — a curated knowledge-based list beats an
+   empty one.
+3. **Flag knowledge-sourced events** (`unverified: true` in frontmatter) so the
+   operator knows their dates/venues are from training knowledge and need
+   confirmation before acting. Verify them with a targeted `WebFetch`/scrape of
+   the official page once search recovers.
+
+## Virtual / hybrid pass
+
+For an operator in a non-hub city, virtual events are the lowest-cost path to
+"being in the room" for **learning/scouting** (not networking — the conversion
+engine collapses online, see below). Run a **dedicated pass** with queries that
+include `virtual` / `online` / `webinar` / `remote` for the operator's AI-safety
+and dev-tools topics. Surface them as options even though the ranking script
+correctly ranks them below in-person for networking.
 
 ## Networking cadence (before / during / after) — feeds the people graph
 

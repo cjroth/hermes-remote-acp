@@ -80,10 +80,12 @@ top-down:
 **Researching the commentary.** The fetched JSON is usually enough, but when a
 post leans on context you don't have — a referenced paper or event, a running
 debate, an author's prior work, a term of art — do a quick web search to ground
-the commentary (use the `WebSearch`/`WebFetch` tools). Keep it light: one or two
-lookups per post at most, only when it genuinely sharpens the "why it matters."
-Don't let research stall the digest; if a lookup is inconclusive, write the
-commentary from what the post and comments already give you.
+the commentary, using the runtime's web search tool (Hermes' built-in `web` tool
+/ Firecrawl on the deployed agent, or `WebSearch`/`WebFetch` on a Claude
+runtime). Keep it light: one or two lookups per post at most, only when it
+genuinely sharpens the "why it matters." Don't let research stall the digest; if
+web search is unavailable or a lookup is inconclusive, just write the commentary
+from what the post and comments already give you.
 
 Guidance: be concrete and neutral in the **summary** and **discussion**;
 summarize arguments, don't editorialize. Save interpretation for the labeled

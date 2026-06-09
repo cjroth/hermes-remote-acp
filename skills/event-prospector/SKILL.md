@@ -49,12 +49,24 @@ possible relocation), so resolve it fresh every run.
 - **Location & logistics from memory.** Read the operator's **current location,
   travel tolerance, and budget** from their memory (`memories/USER.md` and
   `memories/MEMORY.md`), with `context/preferences.md` (its **Location** section
-  and travel tolerance) as the richer fallback. If the location is **missing,
-  stale, or ambiguous** (e.g. memory says a move "may be complete or paused"),
-  **ask the operator to confirm where they're based now (and any planned trips),
-  then update memory.** Use that resolved location + travel tolerance + budget to
-  derive each event's `travel_tier` / `est_cost_usd` / `budget_fit`. Do not write
-  a city into any file as a constant — it's always a function of current memory.
+  and travel tolerance) as the richer fallback. Use that resolved location +
+  travel tolerance + budget to derive each event's `travel_tier` /
+  `est_cost_usd` / `budget_fit`. Do not write a city into any file as a constant
+  — it's always a function of current memory.
+  - **If the location is missing, stale, or ambiguous** (e.g. memory says a move
+    "may be complete or paused"), branch on whether anyone's there to answer:
+    - **Interactive run:** **ask the operator to confirm where they're based now
+      (and any planned trips), then update memory** before scoring travel.
+    - **Cron / no-reply digest run (nobody to ask):** **do not block or guess
+      silently.** Proceed with the **last-known** location, but (a) put a
+      prominent **"⚠️ Location needs confirmation"** callout in the report header,
+      (b) if memory *implies* a likely new base (e.g. an in-progress move to a
+      named city), score events against **both** the last-known and the
+      most-likely-new location and show both, and (c) ask the operator to confirm
+      next time they're in the loop.
+  - To detect drift automatically, treat a `location_staleness_days` field in
+    memory (days since the location was last confirmed) as the trigger: past a
+    threshold, flag the location as stale per the above even if it looks set.
 - `goals/goals.md` — the strategic direction and current stage (events are scored
   against goals; stage biases which event *formats* win — see playbook).
 - `people/**` and `companies/`, `roles/`, `context/` — the relationship graph and
@@ -79,6 +91,27 @@ trips)**, and whether an attendee/speaker list is obtainable. **Co-locate on
 anchors** — query side events/dinners clustered around tentpole events; the
 satellites often beat the main stage.
 
+**How to search (and what to do when search is down).** Use the runtime's web
+search tool — Hermes' built-in `web` tool (Firecrawl) on the deployed agent, or
+the `WebSearch`/`WebFetch` tools on a Claude runtime. **Do not shell out to
+`curl` against DuckDuckGo/Brave HTML** — that gets captcha'd and consent-gated.
+The search craft and a **fallback discovery mode** for when web search is
+unavailable live in the playbook ("Discovery sources" + "Fallback discovery
+mode") — read them. In short: try live search first; if it's down or empty,
+**pivot to knowledge-based discovery** (the model's working knowledge of the
+major conference calendar, cross-referenced to the operator's goals and target
+companies) rather than returning an empty list — and **mark those events as
+knowledge-sourced (`unverified: true`)** so the operator knows to confirm
+dates/venues. A well-curated knowledge-based list beats no list.
+
+**Run a dedicated virtual/hybrid pass.** For an operator in a non-hub city,
+virtual events are the lowest-cost path to "being in the room" for the
+learning/scouting use case. Explicitly query for `virtual` / `online` /
+`webinar` / `remote` AI-safety and dev-tools summits and workshops, not just
+in-person events. (The ranking script correctly collapses who's-going density
+for virtual — they'll rank below in-person for *networking* — but the operator
+should still see them as options.)
+
 For each event, compute **who's-going density**: cross-reference the
 attendee/speaker list against `people/` and the target companies/shortlist, and
 apply the **30% relevance gate**. Then write `events/<status>/<slug>.md` with the
@@ -102,6 +135,14 @@ and the soft-score rubric (who's-going density weighted highest, then goal-fit,
 business opportunity, uniqueness, follow-up potential, cost-efficiency, learning),
 and writes the ranked table to `/data/vault/events.md` (also stdout). **Always
 run it** — verdicts drift with the calendar alone (events approach, then pass).
+
+The script reports **strategic value (the score) and accessibility (the Travel
+column) as two separate dimensions**, so a high-value event that needs a flight
+reads as exactly that — a `far` event clearing the attend bar is labelled **✈️
+attend (travel)**, distinct from a local **✅ attend**. It also adds a
+**co-location bonus**: events sharing a city within ±4 weeks get a bundle bonus
+and a 🧳 marker, surfacing "hit 3 things on one trip" as a ranking signal. Use
+that signal in the bundling section of the report.
 
 ## 4. Plan the top picks (rank-then-commit)
 
@@ -133,10 +174,36 @@ reach, and who does showing up there make reachable next?
 - Update event files (density, flags, plans, and — after the operator attends —
   the who-I-met log + follow-up state). Re-run `rank-events.py` if anything
   material changed so `events.md` is current.
-- Report one consolidated summary: the ranked shortlist with each pick's why,
-  who-to-meet, pre-event drafts, and logistics; call out any **curated dinners /
-  host-your-own** opportunities and any **flagged** events (conflict/over-budget/
-  thin) separately. Mention `events.md` was written.
+- **Report in this order — lead with the verdict, don't bury it behind a location
+  disclaimer:**
+  1. **One-sentence strategic verdict** — the most important thing first
+     ("Your goals need SF/Vancouver rooms; here's the best path to them").
+  2. **Ranked table** (the data, from `events.md`).
+  3. **Top-pick deep dives** (the narrative: each pick's why, who-to-meet,
+     pre-event drafts, logistics).
+  4. **Location / strategic-tension callout** — *surfaced as a finding, not a
+     disclaimer at the top* (see the rule below). Include the **"⚠️ Location
+     needs confirmation"** flag here on cron runs with stale location.
+  5. **Bundling strategy** — use the script's 🧳 co-location signal to propose
+     amortizing far trips ("one SF trip hits these three").
+  6. **Virtual alternatives** — the lower-cost learning/scouting options from the
+     virtual pass.
+  Call out **curated dinners / host-your-own** opportunities and any **flagged**
+  events (conflict/over-budget/thin) within the relevant section, and **mark
+  knowledge-sourced events** (`unverified`) as needing date/venue confirmation.
+  Mention `events.md` was written.
+- **Strategic-finding rule (don't frame travel as a flaw in the picks).** When
+  **≥50% of the recommended events are `far` or `regional`**, open the
+  location/tension callout (step 4) as a **strategic finding**, not an apology:
+  - Name the gap — *the operator's goals require rooms that don't exist in their
+    current city*; travel is the **price of the current location**, not a defect
+    in the recommendations.
+  - Tie it to any **location/move goal** in `goals.md` — this is concrete
+    evidence for (or against) a relocation, and frame it that way.
+  - Propose **bundling trips** to amortize the travel (feed from the 🧳 signal).
+  The scoring already penalizes `far` via cost-efficiency; this step connects
+  that penalty back to the operator's goals so it reads as insight, not an
+  excuse.
 - **Gently coach, don't overrule** (same spirit as `goals`/`prospector`): if the
   operator wants to travel far for a thin room, or attend a virtual event hoping
   to network, say so and propose the better move — then defer to their call.
