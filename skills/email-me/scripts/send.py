@@ -9,7 +9,7 @@ It talks plain SMTP to the local hydroxide bridge (the same transport the
 `proton` skill uses); the bridge handles ProtonMail auth and PGP. Stdlib only.
 
 Body formats:
-    (default)    text/plain — sent verbatim
+    (default)    text/plain -- sent verbatim
     --markdown   render Markdown into a clean, styled HTML email (recommended
                  for digests/reports). Sent as multipart/alternative so clients
                  without HTML still get the raw Markdown as plain text.
@@ -47,7 +47,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 # Operator's primary inbox. Set per-deploy via the USER_PRIMARY_EMAIL secret;
-# there is no hardcoded default — whoever runs the skill provides their own.
+# there is no hardcoded default -- whoever runs the skill provides their own.
 DEFAULT_TO = os.environ.get("USER_PRIMARY_EMAIL", "")
 
 HOST = os.environ.get("HYDROXIDE_HOST", "127.0.0.1")
@@ -78,7 +78,8 @@ def read_body(args):
 # ---------------------------------------------------------------------------
 # Minimal Markdown -> HTML (stdlib only). Covers what reports/digests need:
 # headings, paragraphs, bold/italic/code, links (and bare URLs), ordered and
-# unordered lists, blockquotes, fenced code blocks, and horizontal rules.
+# unordered lists, blockquotes, fenced code blocks, tables, and horizontal
+# rules.
 # ---------------------------------------------------------------------------
 def _inline(text):
     """Render inline Markdown in an already-block-split line."""
@@ -92,7 +93,7 @@ def _inline(text):
     # inline code first so * _ inside it aren't treated as emphasis
     text = re.sub(r"`([^`]+)`", lambda m: put("<code>" + m.group(1) + "</code>"), text)
     # [label](url)
-    text = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)",
+    text = re.sub(r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
                   lambda m: put(f'<a href="{m.group(2)}">{m.group(1)}</a>'), text)
     # bare URLs (stash so emphasis regexes can't corrupt them)
     text = re.sub(r"(https?://[^\s<>()]+)",
@@ -170,6 +171,53 @@ def _render_markdown(md):
                 i += 1
             out.append("<ol>" + "".join(items) + "</ol>")
             continue
+        # Table: lines starting with |
+        if s.startswith("|"):
+            flush()
+            j = i
+            rows = []
+            while j < n and lines[j].strip().startswith("|"):
+                rows.append(lines[j].strip())
+                j += 1
+            if len(rows) >= 2 and re.match(r"^\|[-:| ]+\|$", rows[1]):
+                i = j
+                seps = rows[1].split("|")[1:-1]
+                aligns = []
+                for sep in seps:
+                    ss = sep.strip()
+                    if ss.startswith(":") and ss.endswith(":"):
+                        aligns.append("center")
+                    elif ss.endswith(":"):
+                        aligns.append("right")
+                    else:
+                        aligns.append("left")
+                html_parts = ["<table>"]
+                # Header row
+                headers = [h.strip() for h in rows[0].split("|")[1:-1]]
+                html_parts.append("<thead><tr>")
+                for ci, h in enumerate(headers):
+                    al = f' style="text-align:{aligns[ci]}"' if ci < len(aligns) else ""
+                    html_parts.append(f"<th{al}>{_inline(h)}</th>")
+                html_parts.append("</tr></thead>")
+                # Body rows (skip separator row at index 1)
+                data_rows = rows[2:] if len(rows) > 2 else []
+                if data_rows:
+                    html_parts.append("<tbody>")
+                    for r in data_rows:
+                        cells = [c.strip() for c in r.split("|")[1:-1]]
+                        html_parts.append("<tr>")
+                        for ci, c in enumerate(cells):
+                            al = f' style="text-align:{aligns[ci]}"' if ci < len(aligns) else ""
+                            html_parts.append(f"<td{al}>{_inline(c)}</td>")
+                        html_parts.append("</tr>")
+                    html_parts.append("</tbody>")
+                html_parts.append("</table>")
+                out.append("\n".join(html_parts))
+                continue
+            # Line starts with | but isn't a real table -- treat as paragraph
+            para.append(s)
+            i += 1
+            continue
         para.append(s)                                 # paragraph text
         i += 1
     flush()
@@ -191,7 +239,7 @@ _HTML_SHELL = """<!DOCTYPE html>
   .wrap {{ max-width:680px; margin:0 auto; padding:24px 16px; }}
   .card {{ background:#ffffff; border:1px solid #e5e7eb; border-radius:10px;
            padding:28px 32px; }}
-  .card, .card p, .card li, .card blockquote {{
+  .card, .card p, .card li, .card td, .card th, .card blockquote {{
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     color:#1f2933; font-size:15px; line-height:1.6; }}
   h1 {{ font-size:22px; line-height:1.3; margin:0 0 16px; color:#111827; }}
@@ -209,6 +257,9 @@ _HTML_SHELL = """<!DOCTYPE html>
   pre {{ background:#f3f4f6; padding:14px 16px; border-radius:8px; overflow-x:auto; }}
   pre code {{ background:none; padding:0; }}
   hr {{ border:0; border-top:1px solid #e5e7eb; margin:22px 0; }}
+  table {{ border-collapse:collapse; width:100%; margin:0 0 14px; font-size:14px; }}
+  th, td {{ border:1px solid #d1d5db; padding:8px 10px; text-align:left; }}
+  th {{ background:#f3f4f6; font-weight:600; }}
 </style>
 </head>
 <body>
@@ -253,7 +304,7 @@ def main():
         die("HYDROXIDE_USER and HYDROXIDE_BRIDGE_PASS must be set in the environment")
 
     if not args.to:
-        die("USER_PRIMARY_EMAIL is not set — set it (the operator's inbox) or "
+        die("USER_PRIMARY_EMAIL is not set -- set it (the operator's inbox) or "
             "pass --to explicitly")
 
     body = read_body(args)
