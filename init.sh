@@ -28,16 +28,28 @@ install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yam
 # commits from, AND the source for the skill refresh below — so a skill change
 # pushed to main goes live on any machine's next boot WITHOUT an image rebuild
 # (just `fly deploy` / `fly apps restart`). Unset ⇒ skills come from the image
-# as before. The token is NOT written to .git/config: init-time fetch/clone use
-# a transient in-memory URL, and the agent's own pushes read GITHUB_TOKEN from
-# the env via a credential helper.
+# as before. The token is NOT written to .git/config or baked into the remote
+# URL: init-time fetch/clone use a transient in-memory auth URL, and the agent's
+# own pushes read the token from a mode-600 file (/data/.gh_token) via a
+# credential helper. (Why a file, not the env var: GITHUB_TOKEN reaches the
+# Hermes *daemon* but does NOT propagate into the agent's tool/shell subprocess,
+# so a $GITHUB_TOKEN-based helper resolves to empty and pushes fail with
+# "Invalid username or token" — the file is read at push time regardless.)
 REPO_DIR=/data/repo
 if [ -n "${GITHUB_TOKEN:-}" ]; then
     if command -v git >/dev/null 2>&1; then
         GITHUB_REPO="${GITHUB_REPO:-cjroth/c-stack}"
         PLAIN_URL="https://github.com/${GITHUB_REPO}.git"
         AUTH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git"
-        export GITHUB_TOKEN  # so the agent's later `git push` can authenticate
+        export GITHUB_TOKEN  # used by the init-time fetch/clone auth URL below
+        # Stash the token in a mode-600 file the push credential helper cat's at
+        # push time. Required because the agent's tool/shell subprocess does NOT
+        # inherit GITHUB_TOKEN (it reaches the daemon, not shell tools), so a
+        # $GITHUB_TOKEN-based helper would resolve to empty. Lives OUTSIDE
+        # $REPO_DIR so it can never be committed/pushed.
+        ( umask 077; printf '%s' "$GITHUB_TOKEN" > /data/.gh_token )
+        chown hermes:hermes /data/.gh_token 2>/dev/null || true
+        chmod 600 /data/.gh_token 2>/dev/null || true
         if [ -d "$REPO_DIR/.git" ]; then
             su hermes -c "cd '$REPO_DIR' && git fetch --quiet '$AUTH_URL' main && git reset --hard --quiet FETCH_HEAD" \
                 >>/data/repo.log 2>&1 || echo "[init] WARN: repo pull failed (see /data/repo.log)" >&2
@@ -48,11 +60,11 @@ if [ -n "${GITHUB_TOKEN:-}" ]; then
         fi
         if [ -d "$REPO_DIR/.git" ]; then
             # Strip the token from origin, set commit identity + a credential
-            # helper that reads GITHUB_TOKEN from the env at push time.
+            # helper that reads the token from /data/.gh_token at push time.
             su hermes -c "git -C '$REPO_DIR' remote set-url origin '$PLAIN_URL'; \
                 git -C '$REPO_DIR' config user.name '${GIT_USER_NAME:-hermes-agent}'; \
                 git -C '$REPO_DIR' config user.email '${GIT_USER_EMAIL:-${USER_PRIMARY_EMAIL:-hermes@localhost}}'; \
-                git -C '$REPO_DIR' config credential.helper '!f() { echo username=x-access-token; echo password=\$GITHUB_TOKEN; }; f'" \
+                git -C '$REPO_DIR' config credential.helper '!f() { echo username=x-access-token; echo password=\$(cat /data/.gh_token); }; f'" \
                 >>/data/repo.log 2>&1 || true
         fi
     else
