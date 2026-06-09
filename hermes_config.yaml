@@ -24,7 +24,18 @@ model:
 # Flip to use_gateway: true to route through a paid Nous Portal subscription
 # instead (one bill also covers image-gen / browser / TTS) — no key needed then.
 web:
-  backend: firecrawl
+  # Search runs on Brave's own independent index (free tier, ~2k queries/mo).
+  # We moved off Firecrawl for *search* because Firecrawl's search scrapes the
+  # full content of every result, which burned the free credit pool fast. Brave
+  # is search-only, so Firecrawl stays as the extract backend for the occasional
+  # full-page read (extract is low-volume — the per-result scraping in *search*
+  # was the expense, not extract). Brave needs a free key (set both env names;
+  # the provider reads one of them):
+  #   fly secrets set BRAVE_SEARCH_API_KEY=... BRAVE_API_KEY=...   (brave.com/search/api)
+  # To revert to Firecrawl search: set search_backend: firecrawl and redeploy.
+  # (Firecrawl's free credits are spent, so that path is paid until they reset.)
+  search_backend: brave-free
+  extract_backend: firecrawl
   use_gateway: false
 
 # Command-approval posture. Default (no block) is mode: manual = prompt on every
