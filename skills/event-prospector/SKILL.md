@@ -37,7 +37,10 @@ them to act on (like careerbot never submits and prospector never sends). Never
 advance an event between status buckets; the operator owns those decisions.
 
 Channel-agnostic: speak in the conversation; for a no-reply digest run you may
-hand the report to the `email-me` skill.
+hand the report to the `email-me` skill. **When delivering via email, the
+`email-me` markdown renderer supports pipe-delimited tables** — but if you're
+unsure, simplify the ranked table to <6 columns (Rank, Event, When, Travel,
+Cost, Verdict) so it renders cleanly in narrow email viewports.
 
 ## 1. Load context — and get location from MEMORY
 
@@ -216,6 +219,9 @@ reach, and who does showing up there make reachable next?
 - **Location/budget always from memory** — never hard-code a city; re-resolve
   each run and confirm + update memory if stale.
 - **Quality-gate every addition** — must serve a goal and clear the relevance gate.
+- **Target at least 50 events in the shortlist**, aiming for a ~50/50 mix of
+  local (RTP) and travel (far/regional) events. The operator wants breadth —
+  more options to choose from, not a pruned top-5.
 - **Privacy:** event files are `*.md` and stay local (vault `.gitignore`); never
   push them or surface them outside the operator's own channels. Only `AGENTS.md`
   syncs.
