@@ -27,6 +27,21 @@ web:
   backend: firecrawl
   use_gateway: false
 
+# Command-approval posture. Default (no block) is mode: manual = prompt on every
+# dangerous command, which is why the agent asked so often and why the
+# event-prospector cron run got "timed out without user consent".
+#
+# mode: smart → an auxiliary LLM risk-assesses each command: low-risk ones (web
+# searches, reads, safe scripts) auto-approve, genuinely dangerous ones auto-deny,
+# and only uncertain cases prompt. Big drop in approval fatigue, safety net kept.
+# A hardcoded catastrophic-command blocklist (rm -rf /, fork bombs, disk wipes)
+# always refuses regardless of mode. cron_mode: deny keeps unattended cron jobs
+# conservative — they won't auto-run an uncertain/dangerous command with nobody
+# watching (low-risk cron commands still auto-approve under smart).
+approvals:
+  mode: smart
+  cron_mode: deny
+
 # Matrix (Beeper) response streaming. transport "edit" = progressive m.replace
 # edits, the native streaming mode for Matrix (it has no draft API). Combined
 # with the Dockerfile buffer_only patch, the bot's reply grows live in Beeper
