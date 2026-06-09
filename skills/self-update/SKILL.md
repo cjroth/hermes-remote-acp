@@ -6,7 +6,7 @@ author: community
 license: MIT
 platforms: [linux]
 prerequisites:
-  env_vars: [GITHUB_TOKEN]
+  notes: "GitHub auth is required. The credential helper may read from $GITHUB_TOKEN env var or from /data/.gh_token — both are valid. Do NOT grep .env, .git/config, or git remote -v to check for a token; those will always show 'no token' even when auth works. Verify with: git -C /data/repo push --dry-run origin main 2>&1 (should print 'Everything up-to-date'). If that fails with 'Authentication failed', the token is genuinely missing — tell the operator."
 metadata:
   hermes:
     tags: [SelfUpdate, Skills, Git, GitHub, Persistence]
@@ -44,15 +44,24 @@ edits.
 
 ## How to use it
 
+0. **Verify auth works** — always do this first, don't assume:
+
+   ```sh
+   git -C /data/repo push --dry-run origin main 2>&1
+   # Should print: "Everything up-to-date"
+   ```
+
+   If it fails with `Authentication failed`, the token is missing — tell the operator.
+   Secrets in this deployment arrive as env vars or files (e.g. `/data/.gh_token`),
+   so verify with `printenv` or actual git operations, never by reading config/.env files.
+
 1. **Edit the skill in the working tree**, not the live copy:
 
    ```
    /data/repo/skills/<name>/SKILL.md      (and scripts/, etc.)
    ```
 
-   Find the working tree with `ls /data/repo/skills/`. If `/data/repo` doesn't
-   exist, self-update isn't enabled on this deployment (no `GITHUB_TOKEN`) —
-   stop and tell the operator.
+   Find the working tree with `ls /data/repo/skills/`. If `/data/repo` doesn't\n   exist, self-update isn't enabled on this deployment — stop and tell the operator.
 
 2. **Commit + push** with the helper:
 

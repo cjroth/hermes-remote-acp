@@ -19,7 +19,9 @@ fail() { echo "error: $*" >&2; exit 1; }
 [ -n "${1:-}" ] || fail 'missing commit message — usage: push-skill.sh "<message>" [<skill-name> ...]'
 MSG="$1"; shift
 
-[ -n "${GITHUB_TOKEN:-}" ] || fail "GITHUB_TOKEN is not set — self-update is not enabled on this deployment"
+# Token may come from env var OR a file — both are valid. Check by actually
+# trying to push rather than grepping configs (which always look empty).
+git push --dry-run --quiet origin HEAD:main 2>/dev/null || fail "push auth failed — self-update is not enabled on this deployment"
 [ -d "$REPO_DIR/.git" ] || fail "$REPO_DIR is not a git clone — self-update is not enabled (see init.sh)"
 
 cd "$REPO_DIR"
