@@ -30,8 +30,13 @@ web research for context) → done.
 ## 1. Fetch the material
 
 ```bash
-python3 scripts/lesswrong.py digest --limit 8 --comments 8 --since-hours 30
+python3 scripts/lesswrong.py digest --limit 8 --comments 6 --since-hours 30
 ```
+
+The defaults are tuned to keep the fetch payload lean — ~6 comments per post,
+trimmed lengths — because the per-post discussion summary is only 1–3 sentences,
+so pulling 8 full comments wastes context. Bump `--comments` /
+`--max-comment-chars` if you specifically want more depth.
 
 This returns JSON with the day's ranked posts; each entry has `title`, `author`,
 `url`, `score`, `comment_count`, `posted_at`, `body` (post text, truncated), and
@@ -82,10 +87,12 @@ post leans on context you don't have — a referenced paper or event, a running
 debate, an author's prior work, a term of art — do a quick web search to ground
 the commentary, using the runtime's web search tool (Hermes' built-in `web` tool
 / Firecrawl on the deployed agent, or `WebSearch`/`WebFetch` on a Claude
-runtime). Keep it light: one or two lookups per post at most, only when it
-genuinely sharpens the "why it matters." Don't let research stall the digest; if
-web search is unavailable or a lookup is inconclusive, just write the commentary
-from what the post and comments already give you.
+runtime). Keep it light and **budget the whole digest to ~3–4 web lookups
+total** (not per post) — spend them on the two or three posts where outside
+context most sharpens the "why it matters," and write the rest of the commentary
+straight from the post and comments. Most posts need no lookup at all. Don't let
+research stall the digest; if web search is unavailable or a lookup is
+inconclusive, just write the commentary from what the post and comments give you.
 
 Guidance: be concrete and neutral in the **summary** and **discussion**;
 summarize arguments, don't editorialize. Save interpretation for the labeled

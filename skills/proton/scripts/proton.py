@@ -88,6 +88,12 @@ def dav(method, port, path, body=None, depth=None, ctype="application/xml"):
             return r.status, r.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
         return e.code, e.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, OSError) as e:
+        # Bridge down / connection refused / timeout: emit the JSON error
+        # contract callers expect (and the SKILL's "retry once" hint) rather
+        # than letting an uncaught traceback escape.
+        die(f"Proton bridge unreachable on {HOST}:{port} ({getattr(e, 'reason', e)}). "
+            "The hydroxide bridge may be restarting — retry once.")
 
 
 def _responses(xml):
@@ -178,9 +184,9 @@ def list_events(cal_needle, start, end):
         # ATTENDEE repeats; capture each invitee's email + PARTSTAT (RSVP).
         attendees = []
         for line in re.findall(r"^ATTENDEE[^\r\n]*", data, re.M):
-            email = line.split("mailto:", 1)[-1].strip() if "mailto:" in line else None
+            addr = line.split("mailto:", 1)[-1].strip() if "mailto:" in line else None
             ps = re.search(r"PARTSTAT=([^;:]+)", line)
-            attendees.append({"email": email, "status": ps.group(1) if ps else None})
+            attendees.append({"email": addr, "status": ps.group(1) if ps else None})
         events.append({"uid": field("UID"), "summary": field("SUMMARY"),
                        "start": field("DTSTART"), "end": field("DTEND"),
                        "location": field("LOCATION"), "attendees": attendees,
@@ -434,10 +440,10 @@ def read_message(folder, uid):
         if msg.is_multipart():
             for part in msg.walk():
                 if part.get_content_type() == "text/plain":
-                    body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", "replace")
+                    body = (part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8", "replace")
                     break
         else:
-            body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", "replace")
+            body = (msg.get_payload(decode=True) or b"").decode(msg.get_content_charset() or "utf-8", "replace")
         return {"uid": uid, "from": msg.get("From"), "to": msg.get("To"),
                 "subject": msg.get("Subject"), "date": msg.get("Date"), "body": body}
     finally:

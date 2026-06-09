@@ -93,6 +93,19 @@ floor on *quality* prospects, not a license to pad — never add someone who fai
 the ICP gate just to hit the number. If you genuinely exhaust plausible
 candidates before 100, stop and say how many you reached and why.
 
+**Search efficiently — a floor on people is not a floor on searches.** Getting to
+100 does *not* mean 100 web searches. Favor **list-yielding queries** that return
+many candidates at once — a VC's portfolio page, a conference's speaker list, a
+"top people in X" roundup, an accelerator batch, the contributors to a relevant
+repo — over one query per person; a single good list can seed a dozen prospects.
+And **don't research a `trigger` for all 100**: pull recent-signal lookups (funding,
+launch, job change, a post worth engaging) only for the people you'll actually
+surface and draft for in §4 (the top ~3–5, plus any you're about to mark
+`warm-intro`/`cold`). For the long tail, set what discovery already revealed and
+leave `trigger` blank — it costs nothing and the ranking still works. Lean on the
+vault and your own working knowledge first; spend live searches where they change
+a decision. If a `trigger` is stale or absent for a non-top prospect, that's fine.
+
 For each person, write `people/<status>/<slug>.md` with the frontmatter from
 `people/AGENTS.md` (category, relationship_strength, channels, `has_warm_path`,
 `super_connector`, `prominence`, `specific_ask`, `last_touch`, `cadence_days`,

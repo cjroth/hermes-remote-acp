@@ -28,8 +28,13 @@ Pipeline: `hackernews.py` (fetch) → you (summarize) → done.
 ## 1. Fetch the material
 
 ```bash
-python3 scripts/hackernews.py digest --limit 8 --comments 8 --since-hours 30
+python3 scripts/hackernews.py digest --limit 8 --comments 6 --since-hours 30
 ```
+
+The defaults are tuned to keep the fetch payload lean — ~6 comment threads per
+story, trimmed lengths — because the digest only needs 1–3 sentences of
+discussion per story, so pulling 8 full comments wastes context. Bump
+`--comments` / `--max-comment-chars` if you specifically want more depth.
 
 This hits the official Hacker News Firebase API (no auth) and returns JSON with
 the day's ranked stories; each entry has `title`, `author`, `url` (the linked

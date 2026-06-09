@@ -61,7 +61,8 @@ edits.
    /data/repo/skills/<name>/SKILL.md      (and scripts/, etc.)
    ```
 
-   Find the working tree with `ls /data/repo/skills/`. If `/data/repo` doesn't\n   exist, self-update isn't enabled on this deployment — stop and tell the operator.
+   Find the working tree with `ls /data/repo/skills/`. If `/data/repo` doesn't
+   exist, self-update isn't enabled on this deployment — stop and tell the operator.
 
 2. **Commit + push** with the helper:
 

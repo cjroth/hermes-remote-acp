@@ -208,14 +208,14 @@ def main():
     d = sub.add_parser("digest", help="fetch ranked recent stories + top comments")
     d.add_argument("--view", default="top", choices=list(VIEWS))
     d.add_argument("--limit", type=int, default=8, help="number of stories to include")
-    d.add_argument("--comments", type=int, default=8, help="top comment threads per story")
+    d.add_argument("--comments", type=int, default=6, help="top comment threads per story")
     d.add_argument("--since-hours", type=int, default=30,
                    help="only include stories newer than this many hours")
     d.add_argument("--fetch", type=int, default=80,
                    help="how many stories to pull from the view before filtering")
     d.add_argument("--sort", default="score", choices=["score", "comments", "new"])
-    d.add_argument("--max-post-chars", type=int, default=6000)
-    d.add_argument("--max-comment-chars", type=int, default=1200)
+    d.add_argument("--max-post-chars", type=int, default=4000)
+    d.add_argument("--max-comment-chars", type=int, default=800)
     args = ap.parse_args()
 
     if args.cmd == "digest":

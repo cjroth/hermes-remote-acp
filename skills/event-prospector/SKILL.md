@@ -126,6 +126,19 @@ speaker/attendee target shortlist, day-of ideas, and reasoning in the **body**.
 **Quality gate:** only add events that plausibly serve a goal *and* clear the
 relevance gate. Don't pad the list with generic events.
 
+**Search efficiently — a floor on events is not a floor on searches.** Reaching
+50+ events does *not* mean dozens of searches. Lean on **list-yielding sources**
+that return many events per call — Confs.tech's JSON API, Luma city/topic JSON,
+the 10times/dev.events directory pages — so a handful of queries seeds most of
+the list; reserve one-off lookups for specific high-value anchors. The expensive
+part is **per-event attendee/speaker lookups**: don't fetch a full attendee list
+for all 50. Estimate who's-going density from the event's topic, host, and
+audience for the long tail, and spend real attendee-list lookups only on the
+shortlist you'll actually plan in §4 (the top ~5, plus any near the attend bar).
+Fold the virtual/hybrid pass in as a couple of added queries, not a second full
+sweep. When live search is down, knowledge-based discovery (below) costs zero
+searches — use it rather than burning retries.
+
 ## 3. Rank
 
 ```bash

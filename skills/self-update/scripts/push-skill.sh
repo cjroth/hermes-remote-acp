@@ -19,12 +19,15 @@ fail() { echo "error: $*" >&2; exit 1; }
 [ -n "${1:-}" ] || fail 'missing commit message — usage: push-skill.sh "<message>" [<skill-name> ...]'
 MSG="$1"; shift
 
+# Enter the repo BEFORE the auth check — otherwise the dry-run push runs against
+# whatever repo the cwd happens to be (the script is invoked by absolute path
+# from anywhere), giving a misleading auth result.
+[ -d "$REPO_DIR/.git" ] || fail "$REPO_DIR is not a git clone — self-update is not enabled (see init.sh)"
+cd "$REPO_DIR"
+
 # Token may come from env var OR a file — both are valid. Check by actually
 # trying to push rather than grepping configs (which always look empty).
 git push --dry-run --quiet origin HEAD:main 2>/dev/null || fail "push auth failed — self-update is not enabled on this deployment"
-[ -d "$REPO_DIR/.git" ] || fail "$REPO_DIR is not a git clone — self-update is not enabled (see init.sh)"
-
-cd "$REPO_DIR"
 
 # Stage only under skills/. Restricting the pathspec is what keeps this from
 # ever committing core stack files, even though the token technically could.

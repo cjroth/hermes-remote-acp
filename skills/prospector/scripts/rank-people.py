@@ -155,7 +155,8 @@ def score_person(fm, status, today):
     last_touch = parse_date(fm.get("last_touch"))
     days_since = (today - last_touch).days if last_touch else None
     has_trigger = bool((fm.get("trigger") or "").strip())
-    trig_age = (today - parse_date(fm.get("trigger_date"))).days if parse_date(fm.get("trigger_date")) else (0 if has_trigger else None)
+    trig_date = parse_date(fm.get("trigger_date"))
+    trig_age = (today - trig_date).days if trig_date else (0 if has_trigger else None)
     has_warm = as_bool(fm.get("has_warm_path"))
     super_conn = as_bool(fm.get("super_connector"))
 
@@ -212,7 +213,10 @@ def score_person(fm, status, today):
     total -= 2.0 * status_gap
 
     if days_since is not None and days_since < cadence:
-        total -= 2.0 * round(100 * (cadence - days_since) / cadence)  # touched recently → ease off
+        # Clamp at 0 so a future/typo'd last_touch caps at the same-day penalty
+        # rather than ballooning past 100 (negative days_since → penalty > 100).
+        recent = max(0, days_since)
+        total -= 2.0 * round(100 * (cadence - recent) / cadence)  # touched recently → ease off
     asks, gives = as_int(fm.get("asks")), as_int(fm.get("gives"))
     if asks > gives:
         total -= 1.0 * min(100, (asks - gives) * 20)  # relational, not transactional
