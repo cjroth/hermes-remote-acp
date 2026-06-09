@@ -27,15 +27,16 @@ web:
   # Search runs on Brave's own independent index (free tier, ~2k queries/mo).
   # We moved off Firecrawl for *search* because Firecrawl's search scrapes the
   # full content of every result, which burned the free credit pool fast. Brave
-  # is search-only, so Firecrawl stays as the extract backend for the occasional
+  # is search-only, so Tavily is the extract backend (free 1k/mo) for the occasional
   # full-page read (extract is low-volume — the per-result scraping in *search*
   # was the expense, not extract). Brave needs a free key (set both env names;
   # the provider reads one of them):
   #   fly secrets set BRAVE_SEARCH_API_KEY=... BRAVE_API_KEY=...   (brave.com/search/api)
+  #   fly secrets set TAVILY_API_KEY=...                          (tavily.com - free 1k/mo)
   # To revert to Firecrawl search: set search_backend: firecrawl and redeploy.
   # (Firecrawl's free credits are spent, so that path is paid until they reset.)
   search_backend: brave-free
-  extract_backend: firecrawl
+  extract_backend: tavily
   use_gateway: false
 
 # Command-approval posture. Default (no block) is mode: manual = prompt on every
