@@ -1,14 +1,13 @@
 model:
-  # DeepSeek V4 Pro — open-weights, large-scale MoE variant tuned for advanced
-  # reasoning and long-context tasks, native tool calling, 1M context. Stronger
-  # (and slower/costlier) than the "flash" variant; still far cheaper than
-  # Claude Sonnet 4.6.
-  default: "deepseek/deepseek-v4-pro"
+  # DeepSeek V4 Flash — open-weights, speed-optimized ("flash") variant, native
+  # tool calling, 1M context. Faster than Kimi K2.6 (no reasoning trace) and
+  # ~30x cheaper input / ~75x cheaper output than Claude Sonnet 4.6.
+  default: "deepseek/deepseek-v4-flash"
   provider: openrouter
   # Cap completion length per request — OpenRouter pre-authorizes the full
   # max_tokens against your credit balance, so an uncapped request reserves the
   # model's max output and can 402. 16000 is plenty for chat/agent turns; at
-  # $0.87/M output that reserves only ~$0.014.
+  # $0.20/M output that reserves only ~$0.003.
   max_tokens: 16000
 
 # Web search tool (Firecrawl-backed). Hermes ships a first-class `web` search
