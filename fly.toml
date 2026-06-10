@@ -9,12 +9,18 @@ primary_region = "iad"   # pick a Fly region near you (e.g. nrt, iad, ams, syd)
 
 [env]
   TS_HOSTNAME = "hermes"   # tailnet node name → wss://<TS_HOSTNAME>.<your-tailnet>.ts.net/
+  # ASP hub the vault syncs to (the agent's home lives INSIDE the vault, so
+  # its memory/SOUL.md/config/skills sync too — see init.sh). The enrollment
+  # secret is a Fly secret, not here:
+  #   fly secrets set -a <app> ASP_AUTH_KEY=...
+  ASP_REMOTE = "wss://asp-hub.fly.dev"
   # USER_PRIMARY_EMAIL (operator's inbox for digests / calendar+email invites) is
   # set as a Fly secret, not here, to keep a personal address out of the repo:
   #   fly secrets set -a <app> USER_PRIMARY_EMAIL=you@example.com
 
-# One volume (Fly allows only one per machine) holds both Tailscale state
-# (/data/tailscale) and Hermes home (/data/hermes) — see init.sh.
+# One volume (Fly allows only one per machine) holds Tailscale state
+# (/data/tailscale), the ASP-synced vault (/data/vault, with the Hermes home
+# inside it), and the ASP device identity (/data/asp) — see init.sh.
 [[mounts]]
   source = "data"
   destination = "/data"

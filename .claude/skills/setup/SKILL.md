@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Walk an operator through deploying c-stack (Chris's Opinionated Hermes Agent Stack) — core Fly.io + Tailscale deploy plus the optional Proton, Matrix/Beeper, Notion, and CSP-vault integrations. Use when the user wants to set up, deploy, install, or configure this stack from scratch, or wire up one of its integrations.
+description: Walk an operator through deploying c-stack (Chris's Opinionated Hermes Agent Stack) — core Fly.io + Tailscale deploy plus the optional Proton, Matrix/Beeper, Notion, and ASP-vault integrations. Use when the user wants to set up, deploy, install, or configure this stack from scratch, or wire up one of its integrations.
 ---
 
 # Set up c-stack
@@ -130,21 +130,27 @@ fly secrets set -a <app> NOTION_API_KEY=secret_...   # aliased to NOTION_API_TOK
 fly deploy -a <app> --ha=false
 ```
 
-## Phase 6 — CSP vault sync (optional)
+## Phase 6 — ASP vault + agent-context sync (optional)
 
-Ask first. Clones a remote [CSP](https://github.com/cjroth/csp) vault into
-`/data/vault` and watches it. Needs **both** secrets or sync is skipped.
+Ask first. Clones the remote [ASP](https://github.com/cjroth/asp) hub vault
+into `/data/vault` and watches it. Because `HERMES_HOME` lives inside the
+vault (`/data/vault/agents/hermes`), this also syncs the agent's memories,
+SOUL.md, config, skills, and work products to the hub and every enrolled
+device (machine-local state — DBs, caches, logs, secrets, the Matrix E2EE
+store — is excluded by the seeded vault-root `.aspignore`). Needs both
+values or sync is skipped; `ASP_REMOTE` has a default in `fly.toml [env]`
+(`wss://asp-hub.fly.dev`) that forks should change.
 
 ```bash
-fly secrets set -a <app> \
-  CTX_AUTH_KEY=<csp §10 enrollment secret> \
-  CSP_REMOTE=wss://host[:port]
+fly secrets set -a <app> ASP_AUTH_KEY=<asp enrollment secret>
 fly deploy -a <app> --ha=false
 ```
 
-`CTX_AUTH_KEY` is CSP's pre-shared enrollment bearer secret (no fixed format);
-on first boot `ctx` enrolls this node (key persisted at `/data/csp/id_ed25519`)
-and clones the vault. Logs go to `/data/csp/csp.log`.
+The hub side is the asp repo's own Fly deployment (its `fly.toml` /
+`Dockerfile` run `asp watch --listen` behind Fly edge TLS); the secret must
+match the hub's `ASP_AUTH_KEY`. On first boot `asp` enrolls this node (key
+persisted at `/data/asp/id_ed25519`) and clones the vault. Logs go to
+`/data/asp/asp.log`.
 
 ## Wrap up
 

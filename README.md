@@ -17,7 +17,7 @@ only by supplying its secret.
 | **Proton** (mail · calendar · contacts) | [hydroxide](https://github.com/emersion/hydroxide) bridge on localhost + the `proton` skill | `HYDROXIDE_AUTH_B64` |
 | **Matrix / Beeper** chat | Hermes gateway with E2EE (`mautrix[encryption]`), progressive streaming | `MATRIX_ACCESS_TOKEN` |
 | **Notion** | official `ntn` CLI + the bundled `notion` skill | `NOTION_API_KEY` |
-| **CSP vault sync** | [`ctx`](https://github.com/cjroth/csp) clone-and-watch of `/data/vault` | `CTX_AUTH_KEY` + `CSP_REMOTE` |
+| **ASP vault + agent-context sync** | [`asp`](https://github.com/cjroth/asp) clone-and-watch of `/data/vault` — the agent's home (memories, SOUL.md, config, skills) lives inside the vault and syncs too | `ASP_AUTH_KEY` + `ASP_REMOTE` |
 | **Self-update** | the `self-update` skill + a `/data/repo` clone — the agent edits its own skills and pushes them to GitHub | `GITHUB_TOKEN` |
 | **Fly.io deploy** | `fly.toml` — region, volume, no public services | — |
 

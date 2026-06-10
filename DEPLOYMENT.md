@@ -44,7 +44,7 @@ stable. The bridge also terminates TLS itself (rather than `tailscale serve
 | `bridge.js` | stdio⇄WebSocket bridge. Terminates TLS with the tailnet cert, binds `127.0.0.1` only, newline-frames stdin for hermes-acp's `readline()` parser. |
 | `hermes_config.yaml` | OpenRouter provider + model, plus Matrix streaming config. |
 | `skills/proton/` | The `proton` skill — teaches the agent to drive the hydroxide bridge (mail/calendar/contacts) via a stdlib-only helper script. Bundled into the image and refreshed into `/data` on every boot. |
-| `Dockerfile` | Builds on `nousresearch/hermes-agent`; adds `ws`, the Tailscale binaries, hydroxide (Proton bridge), the `ctx` CSP CLI, the `ntn` Notion CLI, the Matrix E2EE deps (`mautrix[encryption]`), the `proton` skill, and the entrypoint. |
+| `Dockerfile` | Builds on `nousresearch/hermes-agent`; adds `ws`, the Tailscale binaries, hydroxide (Proton bridge), the `asp` ASP sync CLI, the `ntn` Notion CLI, the Matrix E2EE deps (`mautrix[encryption]`), the `proton` skill, and the entrypoint. |
 | `fly.toml` | Fly.io deploy: a region near you, a volume for Tailscale state, **no public services** (tailnet-only). |
 | `beeper_login.py` | One-off helper that mints a Matrix access token for a Beeper account (Beeper's email-code → JWT flow). Used to set up the Matrix/Beeper gateway. |
 
@@ -66,8 +66,8 @@ Container environment variables / secrets:
 | `HYDROXIDE_AUTH_B64` | no | base64 of a working hydroxide `auth.json` (mint it once locally with `hydroxide auth`). Presence auto-starts the ProtonMail bridge (IMAP/SMTP/CalDAV/CardDAV on localhost). |
 | `USER_PRIMARY_EMAIL` | no | The operator's own email address — used as "the user's email" for calendar/email invites and as the default recipient for the `email-me` / `lesswrong-digest` skills. Skills that need it report when it's unset rather than guessing. |
 | `NOTION_API_KEY` | no | Notion integration token — aliased to `NOTION_API_TOKEN` so the `ntn` CLI and the `notion` skill light up. |
-| `CTX_AUTH_KEY` | no | [CSP](https://github.com/cjroth/csp) §10 enrollment secret — an opaque pre-shared bearer key (no fixed format) that enrolls this container into a remote vault and syncs `/data/vault`. Unset ⇒ vault sync is skipped with a logged warning. |
-| `CSP_REMOTE` | no | CSP remote vault URL (`wss://host[:port]`, or `ws://…` if plaintext) to clone/watch. Required alongside `CTX_AUTH_KEY` for sync to start. |
+| `ASP_AUTH_KEY` | no | [ASP](https://github.com/cjroth/asp) enrollment secret — an opaque pre-shared bearer key that enrolls this container into the remote hub vault and syncs `/data/vault` (which contains `HERMES_HOME`, so the agent's memories/SOUL.md/config/skills sync too). Unset ⇒ vault sync is skipped with a logged warning. |
+| `ASP_REMOTE` | no | ASP hub URL (`wss://host[:port]`, or `ws://…` if plaintext) to clone/watch. Set in `fly.toml [env]` by default. Required alongside `ASP_AUTH_KEY` for sync to start. |
 | `GITHUB_TOKEN` | no | Fine-grained GitHub PAT (Contents: read/write on the source repo). Presence enables **self-update**: init.sh clones the repo to `/data/repo` and the `self-update` skill can push skill edits back to `main`. See [Self-update](#self-update-let-the-agent-improve-its-own-skills). |
 | `GITHUB_REPO` | no | `owner/repo` to clone for self-update (default `cjroth/c-stack`). **Forks must set this** to their own `owner/c-stack`. |
 | `GIT_USER_NAME` | no | Commit author name for self-update pushes (default `hermes-agent`). |
@@ -217,11 +217,22 @@ Then connect an ACP client to `wss://<node>.<your-tailnet>.ts.net/`.
 - The cert is provisioned at boot via `tailscale cert` and cached in the volume.
   Manual certs don't auto-renew the way `serve --https` does, so a periodic
   restart (well within the ~90-day cert life) re-provisions it.
-- **CSP vault sync** (`CTX_AUTH_KEY` + `CSP_REMOTE`): the `ctx` binary clones the
-  remote vault into `/data/vault` on first boot, then `watch`es it (the synced
-  folder lives on the persistent volume, so it survives restarts and isn't
-  re-cloned). `CTX_AUTH_KEY` is CSP's §10 pre-shared enrollment secret: `ctx`
-  sends it as a bearer token on connect, the remote authorizes this node's
-  auto-generated key (persisted at `/data/csp/id_ed25519`), and after first
-  enrollment the node's key is durable in the remote's `authorized_keys`. Logs
-  go to `/data/csp/csp.log` inside the container.
+- **ASP vault + agent-context sync** (`ASP_AUTH_KEY` + `ASP_REMOTE`): the `asp`
+  binary clones the hub vault into `/data/vault` on first boot (a pristine
+  clone adopts the hub's vault identity), then runs `asp watch --peer` on every
+  boot after (the `/data/asp/.cloned` marker gates the switch — `watch` before
+  a successful clone would mint a new vault identity the hub permanently
+  rejects). `HERMES_HOME` lives *inside* the vault at `/data/vault/agents/hermes`,
+  so the agent's memories, SOUL.md, config.yaml, skills, cron jobs, and work
+  products replicate to the hub and every enrolled device; the vault-root
+  `.aspignore` (seeded once by init.sh, synced and editable afterwards) keeps
+  machine-local state out — live SQLite DBs, caches/toolchains, logs, secrets
+  (`.env`, `auth.json`, `.ssh`), the device-bound Matrix E2EE store, and
+  (by default) session transcripts. `ASP_AUTH_KEY` is ASP's pre-shared
+  enrollment secret: `asp` sends it as a bearer token on connect, the hub
+  authorizes this node's auto-generated ed25519 key (persisted at
+  `/data/asp/id_ed25519`), and after first enrollment the node's key is durable
+  in the hub's `authorized_keys`. Logs go to `/data/asp/asp.log` inside the
+  container. init.sh migrates a pre-ASP `/data/hermes` home into the vault on
+  first boot (old vault backed up at `/data/vault-pre-asp.bak`, compatibility
+  symlink left at `/data/hermes`).

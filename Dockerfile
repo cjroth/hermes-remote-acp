@@ -1,14 +1,14 @@
-# --- Build the CSP `ctx` CLI (Context Sync Protocol) -------------------------
+# --- Build the ASP `asp` CLI (Agent Sync Protocol, successor to CSP) ----------
 # Built in a throwaway Rust stage and copied into the final image as a single
 # self-contained binary, so the runtime image carries no Rust toolchain.
-# Pinned to a commit for reproducible builds (bump CSP_REV to upgrade);
+# Pinned to a commit for reproducible builds (bump ASP_REV to upgrade);
 # `--locked` uses the repo's committed Cargo.lock so transitive deps don't
-# drift. `ring` (0.17) ships pregenerated asm, so the stock Rust image's gcc
-# is the only build dep needed.
-FROM docker.io/library/rust:1-bookworm AS cspbuild
-ARG CSP_GIT=https://github.com/cjroth/csp.git
-ARG CSP_REV=57f0ccf089599cb3f583e4de2fcca9c1f63c2406
-RUN cargo install --git "$CSP_GIT" --rev "$CSP_REV" --locked ctx --root /out
+# drift. ASP bundles SQLite (built by cc) and rustls/ring — the stock Rust
+# image's gcc/perl/pkg-config cover all of it.
+FROM docker.io/library/rust:1-bookworm AS aspbuild
+ARG ASP_GIT=https://github.com/cjroth/asp.git
+ARG ASP_REV=2de22bb51451b335558818aa00b880a49bb5cb93
+RUN cargo install --git "$ASP_GIT" --rev "$ASP_REV" --locked asp --root /out
 
 # --- Build hydroxide (self-hosted ProtonMail bridge, CalDAV-enabled fork) -----
 # Throwaway Go stage; the final image carries only the static binary (no Go
@@ -25,9 +25,11 @@ RUN git clone "$HYDROXIDE_GIT" /src \
 
 FROM docker.io/nousresearch/hermes-agent:latest
 
-# CSP `ctx` CLI (built above) — keeps /data/vault synced with a remote CSP
-# listener (clone-on-first-boot, then watch). See the CSP block in init.sh.
-COPY --from=cspbuild /out/bin/ctx /usr/local/bin/ctx
+# ASP `asp` CLI (built above) — keeps /data/vault synced with the remote ASP
+# hub (clone-on-first-boot, then watch). The agent's own home lives INSIDE the
+# vault (see HERMES_HOME below), so memory/SOUL.md/config/skills sync too.
+# See the ASP block in init.sh.
+COPY --from=aspbuild /out/bin/asp /usr/local/bin/asp
 
 # hydroxide (built above) — self-hosted ProtonMail bridge. init.sh runs
 # `hydroxide serve` (IMAP/SMTP/CardDAV/CalDAV on 127.0.0.1) when seeded with a
@@ -150,9 +152,15 @@ RUN set -eux; \
     mv "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}/tailscaled" /usr/local/bin/tailscaled; \
     rm -rf /tmp/ts.tgz "/tmp/tailscale_${TAILSCALE_VERSION}_${ts_arch}"
 
-# HERMES_HOME lives on the persistent volume (/data/hermes), overriding the base
-# image's /opt/data so the agent's sessions/memory/skills survive restarts.
-ENV HERMES_HOME=/data/hermes
+# HERMES_HOME lives INSIDE the ASP-synced vault on the persistent volume,
+# overriding the base image's /opt/data. That makes the agent's context —
+# memories/, SOUL.md, config.yaml, skills/, cron/, work products — part of the
+# synced vault, so it replicates to the hub and every other device in
+# real time. Machine-local state (live SQLite DBs, caches, toolchains, logs,
+# secrets, the Matrix E2EE store) is kept out of the sync by the vault-root
+# .aspignore that init.sh seeds. init.sh migrates an existing /data/hermes
+# here on first boot and leaves a compatibility symlink behind.
+ENV HERMES_HOME=/data/vault/agents/hermes
 
 # Hermes config (OpenRouter provider + model). Staged outside the volume path so
 # the mount can't shadow it; init.sh seeds it into /data/hermes on boot.

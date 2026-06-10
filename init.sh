@@ -10,17 +10,46 @@ HOSTNAME="${TS_HOSTNAME:-hermes}"
 PORT=8443
 TS="/usr/local/bin/tailscale --socket=$SOCK"
 
-mkdir -p /var/run/tailscale /data/hermes /data/tailscale /dev/net /run/tls
+mkdir -p /var/run/tailscale /data/tailscale /dev/net /run/tls
 
 # One persistent volume at /data holds everything that must survive restarts:
-#   /data/hermes    = HERMES_HOME (sessions, memory, state.db, learned skills)
+#   /data/vault     = the ASP-synced vault. HERMES_HOME lives INSIDE it at
+#                     /data/vault/agents/hermes, so the agent's context
+#                     (memories/, SOUL.md, config.yaml, skills/, cron/, work
+#                     products) syncs to the hub alongside the operator's
+#                     notes. Machine-local state is excluded by the vault-root
+#                     .aspignore seeded in the ASP block below.
+#   /data/asp       = ASP device identity + sync log (never synced)
 #   /data/tailscale = tailscaled state (node identity + TLS cert)
-# Fly mounts /data root-owned, so hand the hermes home to the hermes user, then
+HERMES_HOME=/data/vault/agents/hermes
+
+# One-time migration from the pre-ASP layout: move /data/hermes into the vault.
+# The old vault is backed up first (it's small — mostly markdown) because the
+# initial `asp clone` materializes the hub's copy over untracked same-path
+# files. A symlink keeps the old /data/hermes path working for anything that
+# hardcoded it. Dead CSP state (/data/vault/.context) is dropped — ASP ignores
+# that dir anyway, the old CSP remote is gone, and the backup keeps a copy.
+if [ -d /data/hermes ] && [ ! -L /data/hermes ] && [ ! -e "$HERMES_HOME" ]; then
+    echo "[init] migrating /data/hermes -> $HERMES_HOME" >&2
+    if [ -d /data/vault ] && [ ! -e /data/vault-pre-asp.bak ]; then
+        cp -a /data/vault /data/vault-pre-asp.bak || \
+            echo "[init] WARN: vault backup failed; continuing" >&2
+    fi
+    mkdir -p /data/vault/agents
+    mv /data/hermes "$HERMES_HOME"
+    rm -rf /data/vault/.context
+fi
+mkdir -p "$HERMES_HOME"
+ln -sfn "$HERMES_HOME" /data/hermes
+
+# Fly mounts /data root-owned, so hand the vault + hermes home to the hermes
+# user (top levels only; the trees keep their existing ownership), then
 # (re)seed config.yaml from the image (repo is the source of truth for the
-# model/provider; runtime data persists alongside it).
-chown hermes:hermes /data/hermes 2>/dev/null || true
-install -o hermes -g hermes -m 644 /opt/seed/config.yaml /data/hermes/config.yaml 2>/dev/null || \
-    cp /opt/seed/config.yaml /data/hermes/config.yaml
+# model/provider; runtime data persists alongside it). config.yaml sits in the
+# synced vault, so the seeded copy is also visible on every other device.
+chown hermes:hermes /data/vault /data/vault/agents "$HERMES_HOME" 2>/dev/null || true
+install -o hermes -g hermes -m 644 /opt/seed/config.yaml "$HERMES_HOME/config.yaml" 2>/dev/null || \
+    cp /opt/seed/config.yaml "$HERMES_HOME/config.yaml"
 
 # --- Self-update: source repo working tree ------------------------------------
 # When GITHUB_TOKEN is set, keep a git clone of the source repo at /data/repo
@@ -74,7 +103,7 @@ fi
 
 # Refresh the bundled skills into the writable skills dir on every boot. The
 # skill loader seeds bundled skills only when ABSENT, so without this an updated
-# skill would never reach /data/hermes/skills after the first deploy. Prefer the
+# skill would never reach $HERMES_HOME/skills after the first deploy. Prefer the
 # /data/repo working tree (so pushed skill edits propagate on restart); fall
 # back to the image-baked copy when the clone is absent. Either way the live
 # copy is overwritten, so the source (repo > image) stays authoritative.
@@ -87,7 +116,7 @@ for skill in communication/proton communication/email-me research/lesswrong-dige
         src="/opt/hermes/skills/$skill"
     fi
     [ -d "$src" ] || continue
-    dest_dir="/data/hermes/skills/$(dirname "$skill")"
+    dest_dir="$HERMES_HOME/skills/$(dirname "$skill")"
     mkdir -p "$dest_dir"
     rm -rf "$dest_dir/$name"
     cp -rf "$src" "$dest_dir/"
@@ -163,15 +192,16 @@ echo "[init] kernel TUN mode" >&2
 # (https://matrix.beeper.com). Outbound-only, so unaffected by the tailnet-only
 # lockdown. Runs as a supervised BACKGROUND process; the ACP bridge stays the
 # foreground PID below — so ACP and the Matrix gateway coexist and both stay
-# usable. State (sessions, Matrix E2EE crypto store) lives in
-# HERMES_HOME=/data/hermes on the persistent volume.
+# usable. State (sessions, Matrix E2EE crypto store) lives in HERMES_HOME on
+# the persistent volume (the E2EE store is .aspignore'd — device-bound keys
+# must never replicate to another machine).
 if [ -n "${MATRIX_ACCESS_TOKEN:-}" ]; then
     # E2EE crypto store + device identity must survive restarts, so keep them on
     # the volume (Hermes' default store path under HERMES_HOME). Pre-create it
     # owned by hermes since the gateway runs de-privileged; losing this dir means
     # losing the bot's encryption identity (see matrix.md E2EE notes).
-    mkdir -p /data/hermes/platforms/matrix/store
-    chown -R hermes:hermes /data/hermes/platforms 2>/dev/null || true
+    mkdir -p "$HERMES_HOME/platforms/matrix/store"
+    chown -R hermes:hermes "$HERMES_HOME/platforms" 2>/dev/null || true
     [ -n "${MATRIX_HOMESERVER:-}" ] || \
       echo "[init] WARN: MATRIX_ACCESS_TOKEN set but MATRIX_HOMESERVER unset (Beeper = https://matrix.beeper.com)" >&2
     echo "[init] starting Matrix gateway (hermes user, supervised)..." >&2
@@ -182,10 +212,10 @@ if [ -n "${MATRIX_ACCESS_TOKEN:-}" ]; then
     # logged. A clean config won't loop; a bad one logs every 5s (visible).
     (
       while true; do
-        HOME=/data/hermes HERMES_HOME=/data/hermes \
+        HOME="$HERMES_HOME" HERMES_HOME="$HERMES_HOME" \
           /command/s6-setuidgid hermes /opt/hermes/.venv/bin/hermes gateway run \
-          >>/data/hermes/gateway.log 2>&1
-        echo "[init] Matrix gateway exited (code $?); respawning in 5s..." >>/data/hermes/gateway.log
+          >>"$HERMES_HOME/gateway.log" 2>&1
+        echo "[init] Matrix gateway exited (code $?); respawning in 5s..." >>"$HERMES_HOME/gateway.log"
         sleep 5
       done
     ) &
@@ -193,47 +223,121 @@ else
     echo "[init] MATRIX_ACCESS_TOKEN unset — Matrix gateway not started" >&2
 fi
 
-# --- CSP context vault sync (optional, runs as hermes user, background) -------
-# Keeps /data/vault (on the persistent volume) synced with a remote CSP vault
-# via the `ctx` CLI: clone it on the first boot, then `watch` (reconnecting to
-# the saved origin) on every boot after.
+# --- ASP vault + agent-context sync (optional, hermes user, background) -------
+# Keeps /data/vault (on the persistent volume) synced with the remote ASP hub
+# via the `asp` CLI: clone on the first boot, then `asp watch --peer` on every
+# boot after. HERMES_HOME lives inside the vault, so this syncs the agent's
+# context — memories/, SOUL.md, config.yaml, skills/, cron/, loose work
+# products — along with the operator's notes. The vault-root .aspignore seeded
+# below keeps machine-local state (live SQLite DBs, caches, toolchains, logs,
+# secrets, the device-bound Matrix E2EE store) out of the sync.
 #
-# Auth is CSP's §10 enrollment model: CTX_AUTH_KEY is a pre-shared, opaque
-# bearer secret (no fixed format) that `ctx` sends on the WS upgrade. A remote
-# requiring enrollment accepts it and durably authorizes THIS node's own
-# public key, so the device just generates its own identity — persisted at
-# /data/csp/id_ed25519 (on the volume) so it stays stable across restarts and
-# doesn't churn fresh enrollments. The reverse trust (this node trusting the
-# server) is bootstrapped by `clone` via trust-on-first-use.
-#   CTX_AUTH_KEY = pre-shared enrollment secret. REQUIRED (read directly by
-#                  `ctx`); unset ⇒ vault sync is skipped with a warning.
-#   CSP_REMOTE   = remote vault URL (wss://host[:port], or ws://… if plaintext).
-if [ -z "${CTX_AUTH_KEY:-}" ]; then
-    echo "[init] CTX_AUTH_KEY unset — no auth key set; CSP vault sync not started" >&2
-elif [ -z "${CSP_REMOTE:-}" ]; then
-    echo "[init] CSP_REMOTE unset — no remote to connect to; CSP vault sync not started" >&2
+# Auth is ASP's enrollment model: ASP_AUTH_KEY is a pre-shared bearer secret
+# (read directly by `asp` from the env) sent on the WS upgrade; the hub
+# accepts it and durably authorizes THIS node's own ed25519 key. The identity
+# persists at ASP_HOME=/data/asp (on the volume, never synced) so it stays
+# stable across restarts. Reverse trust (this node trusting the hub) is
+# bootstrapped by `clone` via trust-on-first-use.
+#   ASP_AUTH_KEY = pre-shared enrollment secret. REQUIRED; unset ⇒ skipped.
+#   ASP_REMOTE   = hub URL (wss://host[:port], or ws://… if plaintext) —
+#                  set in fly.toml [env]; the auth key is a Fly secret.
+if [ -z "${ASP_AUTH_KEY:-}" ]; then
+    echo "[init] ASP_AUTH_KEY unset — no auth key set; ASP vault sync not started" >&2
+elif [ -z "${ASP_REMOTE:-}" ]; then
+    echo "[init] ASP_REMOTE unset — no remote to connect to; ASP vault sync not started" >&2
 else
-    echo "[init] starting CSP vault sync (hermes user, supervised) → $CSP_REMOTE" >&2
-    mkdir -p /data/csp /data/vault
-    chown -R hermes:hermes /data/csp /data/vault 2>/dev/null || true
-    # Supervised respawn loop (same pattern as the gateway above): ctx runs as
-    # a plain background process here, so this restarts it (5s backoff) if it
-    # ever exits. The clone-vs-watch choice is re-evaluated each iteration, so
-    # once /data/vault exists, respawns take the watch path (clone refuses to
-    # clobber an existing vault). ctx auto-generates the identity at
-    # CTX_IDENTITY on first run; CTX_AUTH_KEY is inherited from the env.
+    echo "[init] starting ASP vault sync (hermes user, supervised) → $ASP_REMOTE" >&2
+    mkdir -p /data/asp
+    chown -R hermes:hermes /data/asp 2>/dev/null || true
+    chown hermes:hermes /data/vault 2>/dev/null || true
+
+    # Seed the vault-root .aspignore BEFORE the first capture, so heavy /
+    # sensitive machine-local files never enter the (GC-less) event log.
+    # Written only when absent — after that it's a normal synced vault file
+    # the operator can edit from any device. (.asp/.git/.context/.obsidian/
+    # .trash are always excluded by asp itself.)
+    if [ ! -f /data/vault/.aspignore ]; then
+        cat > /data/vault/.aspignore <<'EOF'
+# Agent home (agents/hermes = HERMES_HOME): sync context, not machine state.
+
+# Live SQLite databases — not file-sync-safe while open (state.db, kanban.db).
+/agents/hermes/*.db
+/agents/hermes/*.db-shm
+/agents/hermes/*.db-wal
+
+# Runtime / lock / pid state (machine-local).
+/agents/hermes/*.lock
+/agents/hermes/**/*.lock
+/agents/hermes/*.pid
+/agents/hermes/processes.json
+/agents/hermes/gateway_state.json
+/agents/hermes/channel_directory.json
+/agents/hermes/.restart_last_processed.json
+/agents/hermes/.update_check
+/agents/hermes/.skills_prompt_snapshot.json
+/agents/hermes/.profile
+/agents/hermes/pairing/
+/agents/hermes/sandboxes/
+
+# Logs and caches.
+/agents/hermes/*.log
+/agents/hermes/logs/
+/agents/hermes/cache/
+/agents/hermes/.cache/
+/agents/hermes/audio_cache/
+/agents/hermes/image_cache/
+/agents/hermes/models_dev_cache.json
+
+# Toolchains / package managers / binaries (OS-level, machine-local).
+/agents/hermes/.bun/
+/agents/hermes/.cargo/
+/agents/hermes/.rustup/
+/agents/hermes/.npm/
+/agents/hermes/.local/
+/agents/hermes/lsp/
+/agents/hermes/bin/
+
+# Secrets and device-bound identity — never sync. platforms/ holds the
+# Matrix E2EE crypto store: replicating it to another machine breaks
+# encryption (and leaks keys).
+/agents/hermes/.env
+/agents/hermes/.env.bak
+/agents/hermes/auth.json
+/agents/hermes/.ssh/
+/agents/hermes/platforms/
+
+# Session transcripts churn on every agent turn and there's no log GC yet;
+# delete this line to opt in to cross-device session sync.
+/agents/hermes/sessions/
+EOF
+        chown hermes:hermes /data/vault/.aspignore 2>/dev/null || true
+    fi
+
+    # Supervised respawn loop (same pattern as the gateway above). `asp watch`
+    # reconnects with backoff on its own; the loop covers crashes. ORDERING
+    # MATTERS: `watch` must never run before one `clone` has succeeded —
+    # watch's startup rescan on a never-synced vault would mint a NEW vault
+    # identity that the hub then permanently rejects ("different vault"). The
+    # /data/asp/.cloned marker (written only after clone exits 0) gates the
+    # switch; a pristine clone instead ADOPTS the hub's vault identity during
+    # the handshake, and the first watch rescan after it captures + pushes
+    # local files (the migrated agent home included).
     (
       while true; do
-        if [ -d /data/vault/.context ]; then
-          HOME=/data/hermes CTX_IDENTITY=/data/csp/id_ed25519 CTX_AUTH_KEY="$CTX_AUTH_KEY" \
-            /command/s6-setuidgid hermes ctx --dir /data/vault watch \
-            >>/data/csp/csp.log 2>&1
+        if [ -f /data/asp/.cloned ]; then
+          HOME="$HERMES_HOME" ASP_HOME=/data/asp ASP_AUTH_KEY="$ASP_AUTH_KEY" \
+            /command/s6-setuidgid hermes asp watch --dir /data/vault --peer "$ASP_REMOTE" \
+            >>/data/asp/asp.log 2>&1 || true   # || true: don't let set -e kill the loop
+          echo "[init] asp watch exited; respawning in 5s..." >>/data/asp/asp.log
+        elif HOME="$HERMES_HOME" ASP_HOME=/data/asp ASP_AUTH_KEY="$ASP_AUTH_KEY" \
+            /command/s6-setuidgid hermes asp clone "$ASP_REMOTE" /data/vault \
+            >>/data/asp/asp.log 2>&1; then
+          touch /data/asp/.cloned
+          echo "[init] asp clone ok — switching to watch" >>/data/asp/asp.log
+          continue
         else
-          HOME=/data/hermes CTX_IDENTITY=/data/csp/id_ed25519 CTX_AUTH_KEY="$CTX_AUTH_KEY" \
-            /command/s6-setuidgid hermes ctx clone "$CSP_REMOTE" /data/vault --watch \
-            >>/data/csp/csp.log 2>&1
+          echo "[init] asp clone failed (code $?); retrying in 5s..." >>/data/asp/asp.log
         fi
-        echo "[init] CSP vault sync exited (code $?); respawning in 5s..." >>/data/csp/csp.log
         sleep 5
       done
     ) &
@@ -287,7 +391,7 @@ while { [ ! -s /run/tls/tls.crt ] || [ ! -s /run/tls/tls.key ]; } && [ "$i" -lt 
     i=$((i+1)); sleep 1
 done
 
-export HOME=/data/hermes BRIDGE_PORT=$PORT WS_HOST=127.0.0.1
+export HOME="$HERMES_HOME" BRIDGE_PORT=$PORT WS_HOST=127.0.0.1
 if [ -s /run/tls/tls.crt ] && [ -s /run/tls/tls.key ]; then
     export TLS_CERT=/run/tls/tls.crt TLS_KEY=/run/tls/tls.key
     echo "[init] starting bridge (WSS) on 127.0.0.1:$PORT" >&2
