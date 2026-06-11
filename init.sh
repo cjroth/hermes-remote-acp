@@ -51,6 +51,16 @@ chown hermes:hermes /data/vault /data/vault/agents "$HERMES_HOME" 2>/dev/null ||
 install -o hermes -g hermes -m 644 /opt/seed/config.yaml "$HERMES_HOME/config.yaml" 2>/dev/null || \
     cp /opt/seed/config.yaml "$HERMES_HOME/config.yaml"
 
+# --- Clean rebuildable package caches from the volume on every boot -----------
+# These are download caches for npm, bun, rustup, and uv. They regenerate
+# automatically on next use (npm install, bun install, rustup install, uv pip
+# install) and would otherwise bloat the persistent volume over time with no
+# benefit — they only speed up repeat installs, which are rare at runtime.
+rm -rf /data/hermes/.npm/_cacache \
+       /data/hermes/.bun/install/cache \
+       /data/hermes/.rustup/downloads \
+       /data/hermes/.cache/uv
+
 # --- Self-update: source repo working tree ------------------------------------
 # When GITHUB_TOKEN is set, keep a git clone of the source repo at /data/repo
 # (on the persistent volume). It's the working tree the `self-update` skill

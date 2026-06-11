@@ -91,13 +91,13 @@ RUN set -eux; \
 # netstack; Tailscale just does raw TCP passthrough to it. Needs the `ws` pkg.
 RUN mkdir -p /opt/bridge
 COPY bridge.js /opt/bridge/bridge.js
-RUN cd /opt/bridge && npm install ws@8
+RUN cd /opt/bridge && npm install ws@8 && rm -rf /root/.npm/_cacache
 
 # Notion's official `ntn` CLI — the bundled Hermes `notion` skill prefers it
 # over raw HTTP (shorter syntax, file uploads, Workers). Node ships in the base
 # image. NOTION_KEYRING=0 keeps it headless (no OS keychain); init.sh aliases
 # NOTION_API_TOKEN from NOTION_API_KEY at runtime.
-RUN npm install -g ntn
+RUN npm install -g ntn && rm -rf /root/.npm/_cacache
 ENV NOTION_KEYRING=0
 
 # --- Matrix gateway E2EE deps (for Beeper / any Matrix homeserver) ------------
@@ -123,7 +123,8 @@ RUN set -eux; \
     /opt/hermes/.venv/bin/python -c "import olm, mautrix.crypto, aiosqlite, markdown"; \
     apt-get purge -y cmake build-essential; \
     apt-get autoremove -y; \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*; \
+    rm -rf /root/.cache/uv
 
 # --- Matrix progressive streaming patch ---------------------------------------
 # run.py hardcodes `_buffer_only = True` for Matrix, so the bot only updates its
